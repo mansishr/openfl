@@ -110,11 +110,11 @@ create_collaborator ${FED_WORKSPACE} ${FED_DIRECTORY} ${COL2} ${COL2_DIRECTORY} 
 
 # # Run the federation
 cd ${FED_DIRECTORY}
-fx aggregator start & 
+fx -l DEBUG aggregator start & 
 sleep 5 
 cd ${COL1_DIRECTORY}/${FED_WORKSPACE}
-fx collaborator start -n ${COL1} & 
+fx -l DEBUG collaborator start -n ${COL1} & 
 cd ${COL2_DIRECTORY}/${FED_WORKSPACE}
-fx collaborator start -n ${COL2}
+fx -l DEBUG collaborator start -n ${COL2}
 wait
 rm -rf ${FED_DIRECTORY}
