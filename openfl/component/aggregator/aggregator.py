@@ -306,21 +306,29 @@ class Aggregator:
                 t for t in tasks if not self._collaborator_task_completed(
                     collaborator_name, t, self.round_number)
             ]
+            self.logger.debug(f'Tasks before removal {tasks}')
             for t in tasks:
                 if t in self.stragglers_for_task:
                     for stragglers in self.stragglers_for_task[t]:
                         if collaborator_name in stragglers:
                             tasks.remove(t)
+            self.logger.debug(f'self.stragglers for task dict {self.stragglers_for_task}')
+            self.logger.debug(f'Stragglers {stragglers}')
+            self.logger.debug(f'Tasks after removal {tasks}')
         else:
             tasks = [
                 t for t in tasks if not self._collaborator_task_completed(
                     collaborator_name, t.name, self.round_number)
             ]
+            self.logger.debug(f'Tasks before removal {tasks}')
             for t in tasks:
                 if t.name in self.stragglers_for_task:
                     for stragglers in self.stragglers_for_task[t.name]:
                         if collaborator_name in stragglers:
                             tasks.remove(t)
+            self.logger.debug(f'self.stragglers for task dict {self.stragglers_for_task}')
+            self.logger.debug(f'Stragglers {stragglers}')
+            self.logger.debug(f'Tasks after removal {tasks}')
 
         # Do the check again because it's possible that all tasks have
         # been completed
