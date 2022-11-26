@@ -2,6 +2,7 @@
 cd /home/lab_phe3223/mansi/stg/openfl
 for COMMIT in {1..100};
 do
+        sleep 90
         echo ' ' >> tests/github/test_hello_federation.sh
         git commit -a -m "Test"
         git push origin test_failing_straggler_handling
