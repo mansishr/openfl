@@ -309,11 +309,11 @@ class Aggregator:
             self.logger.debug(f'Tasks before removal {tasks}')
             for t in tasks:
                 if t in self.stragglers_for_task:
+                    self.logger.debug(f'self.stragglers for task dict {self.stragglers_for_task}')
+                    self.logger.debug(f'Stragglers {stragglers}')
                     for stragglers in self.stragglers_for_task[t]:
                         if collaborator_name in stragglers:
                             tasks.remove(t)
-            self.logger.debug(f'self.stragglers for task dict {self.stragglers_for_task}')
-            self.logger.debug(f'Stragglers {stragglers}')
             self.logger.debug(f'Tasks after removal {tasks}')
         else:
             tasks = [
@@ -323,11 +323,11 @@ class Aggregator:
             self.logger.debug(f'Tasks before removal {tasks}')
             for t in tasks:
                 if t.name in self.stragglers_for_task:
+                    self.logger.debug(f'self.stragglers for task dict {self.stragglers_for_task}')
+                    self.logger.debug(f'Stragglers {stragglers}')
                     for stragglers in self.stragglers_for_task[t.name]:
                         if collaborator_name in stragglers:
                             tasks.remove(t)
-            self.logger.debug(f'self.stragglers for task dict {self.stragglers_for_task}')
-            self.logger.debug(f'Stragglers {stragglers}')
             self.logger.debug(f'Tasks after removal {tasks}')
 
         # Do the check again because it's possible that all tasks have
