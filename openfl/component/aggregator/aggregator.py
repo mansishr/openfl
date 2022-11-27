@@ -310,8 +310,8 @@ class Aggregator:
             for t in tasks:
                 if t in self.stragglers_for_task:
                     self.logger.debug(f'self.stragglers for task dict {self.stragglers_for_task}')
-                    self.logger.debug(f'Stragglers {stragglers}')
                     for stragglers in self.stragglers_for_task[t]:
+                        self.logger.debug(f'Stragglers {stragglers}')
                         if collaborator_name in stragglers:
                             tasks.remove(t)
             self.logger.debug(f'Tasks after removal {tasks}')
@@ -324,8 +324,8 @@ class Aggregator:
             for t in tasks:
                 if t.name in self.stragglers_for_task:
                     self.logger.debug(f'self.stragglers for task dict {self.stragglers_for_task}')
-                    self.logger.debug(f'Stragglers {stragglers}')
                     for stragglers in self.stragglers_for_task[t.name]:
+                        self.logger.debug(f'Stragglers {stragglers}')
                         if collaborator_name in stragglers:
                             tasks.remove(t)
             self.logger.debug(f'Tasks after removal {tasks}')
