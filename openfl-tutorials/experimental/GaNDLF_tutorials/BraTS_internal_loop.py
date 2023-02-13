@@ -8,7 +8,11 @@ import numpy as np
 import torchio
 from tqdm import tqdm
 
-from openfl.experimental.interface import FLSpec, Aggregator, Collaborator
+
+from openfl.experimental.interface import Aggregator, Collaborator
+from local_brandon_copy_of_flspec import FLSpec
+# temporarily commenting below in favor of above for exploration
+# from openfl.experimental.interface import FLSpec, Aggregator, Collaborator
 from openfl.experimental.runtime import LocalRuntime
 from openfl.experimental.placement import aggregator, collaborator
 
@@ -299,7 +303,9 @@ if __name__ == '__main__':
     aggregator.private_attributes = {}
 
     # Setup collaborators with private attributes
-    collaborator_names = [str(n) for n in range(1,4)]    
+    # Brandon changes for quick test runs
+    # collaborator_names = [str(n) for n in range(1,4)]
+    collaborator_names = ['small']
     collaborators = [Collaborator(name=name) for name in collaborator_names]
     
     if args.gpu == 'single':
@@ -340,4 +346,7 @@ if __name__ == '__main__':
                            total_rounds=num_of_rounds,
                            top_model_accuracy=top_model_accuracy)
     flflow.runtime = local_runtime
+    # Brandon DEBUG
+    deepcopy(flflow)
+    print("BRANDON DEBUG, deepdcopied succesfully before run")
     flflow.run()
