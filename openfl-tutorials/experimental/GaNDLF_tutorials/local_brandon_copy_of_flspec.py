@@ -27,16 +27,16 @@ class FLSpec:
     _clones = []
     _initial_state = None
 
-    def __init__(self, checkpoint: bool = False):
+    def __init__(self, checkpoint: bool = False, clone_personalization=None):
         self._foreach_methods = []
         self._checkpoint = checkpoint
-
-        # Brandon Debug
-        deepcopy(self)
-        print(f"BRANDON DEBUG: deepcopied self right at end of init")
-
+        self.clone_personalization = clone_personalization
+        
     @classmethod
     def _create_clones(cls, instance: Type[FLSpec], names: List[str]) -> None:
+        """
+        TODO: Now that these are going to be personalized, shall we call them something different than clones?
+        """
         """Creates clones for instance for each collaborator in names"""
         cls._clones = {name: deepcopy(instance) for name in names}
 
@@ -49,6 +49,13 @@ class FLSpec:
     def save_initial_state(cls, instance: Type[FLSpec]) -> None:
         """Save initial state of instance before executing the flow"""
         cls._initial_state = deepcopy(instance)
+
+    def _personalize_clones(self):
+        if set(self._clones.keys()) != set(self.clone_personalization.keys()):
+            raise ValueError(f"Trying to personalize clones when the clone keys: {self._clones.keys()} do not match personalization keys: {self.clone_personalization.keys()}.")
+        else:
+            for name in self._clones.keys():
+                self._clones[name] = self.clone_personalization[name](self._clones[name])
 
     def run(self) -> None:
         """Starts the execution of the flow"""
@@ -64,6 +71,8 @@ class FLSpec:
             self._foreach_methods = []
             FLSpec._reset_clones()
             FLSpec._create_clones(self, self.runtime.collaborators)
+            if self.clone_personalization is not None:
+                self._personalize_clones()
             # the start function can just be invoked locally
             if self._checkpoint:
                 print(f"Created flow {self.__class__.__name__}")
@@ -159,13 +168,6 @@ class FLSpec:
         Args:
             f: The next task that will be executed in the flow
         """
-
-        # Brandon DEBUG (copied from what Anidya had in sandbox)
-        print("Hello BRANDON :) :) :)")
-        runtime = FLSpec._initial_state.runtime
-        FLSpec._initial_state.runtime = Runtime()
-        cln = deepcopy(FLSpec._initial_state)
-        FLSpec._initial_state.runtime = runtime
 
         # Get the name and reference to the calling function
         parent = inspect.stack()[1][3]
