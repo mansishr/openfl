@@ -182,7 +182,7 @@ class FederatedFlow(FLSpec):
             self.scheduler = None
         params["device"] = self.device[self.input]
         
-        self.agg_validation_score = inference(self.model, self.test_loader, self.scheduler, self.round_num, params)
+        self.agg_validation_score = inference(self.model, self.val_loader, self.scheduler, self.round_num, params)
         self.params = params
 
         print(f'{self.input} value of {self.agg_validation_score}')
@@ -327,6 +327,8 @@ if __name__ == '__main__':
     # in order to instantiate the data loaders of each collaborator
     clone_personalization = {}
     def personalization(cls):
+        # TODO: remove print below Brandon DEBUG
+        print(f"\n###############################\n Personalizing NOW\n#############################\n\n")
         cls.train_loader, cls.val_loader, cls.local_gandlf_config = get_loaders(train_csv_path=cls.train_csv_path, 
                                                                                  val_csv_path=cls.val_csv_path, 
                                                                                  parameters=cls.local_gandlf_config)
