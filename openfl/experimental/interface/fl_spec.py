@@ -24,7 +24,7 @@ final_attributes = []
 
 class FLSpec:
 
-    _clones = []
+    _clones = {}
     _initial_state = None
 
     def __init__(self, checkpoint: bool = False):

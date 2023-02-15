@@ -1,4 +1,5 @@
 from copy import deepcopy
+from functools import partial
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
@@ -64,7 +65,7 @@ def get_loaders(parameters, train_csv_path=None, val_csv_path=None):
         test_csv_path (str): The path to the test CSV file.
     Returns:
         train_loader (torch.utils.data.DataLoader): The training data loader.
-        test_loader (torch.utils.data.DataLoader): The testing data loader.
+        val_loader (torch.utils.data.DataLoader): The validation data loader.
     """
 
     # initialize loaders
@@ -146,8 +147,9 @@ class FederatedFlow(FLSpec):
         self.total_rounds = total_rounds
         self.top_model_accuracy = top_model_accuracy
         self.device = device
-        self.round_num = 0                                 # starting round
+        self.round_num = 0  
 
+    # starting round
     @aggregator
     def start(self):
         print(f'Performing initialization for model')
@@ -211,7 +213,7 @@ class FederatedFlow(FLSpec):
     def local_model_validation(self):
         print(f'Performing local model validation for collaborator {self.input} on Device {self.device[self.input]}')
 
-        self.local_validation_score = inference(self.model, self.test_loader, self.scheduler, self.round_num, self.params)
+        self.local_validation_score = inference(self.model, self.val_loader, self.scheduler, self.round_num, self.params)
         
         print(f'{self.input} value of {self.local_validation_score}')
         self.next(self.join, exclude=['training_completed'])
@@ -305,7 +307,7 @@ if __name__ == '__main__':
     # Setup collaborators with private attributes
     # Brandon changes for quick test runs
     # collaborator_names = [str(n) for n in range(1,4)]
-    collaborator_names = ['small']
+    collaborator_names = ['0']
     collaborators = [Collaborator(name=name) for name in collaborator_names]
     
     if args.gpu == 'single':
@@ -321,22 +323,38 @@ if __name__ == '__main__':
     else:
         raise Exception('input should be single or multi')
 
+    # Functions to be applied to the per-collaborator flow object clones
+    # in order to instantiate the data loaders of each collaborator
+    clone_personalization = {}
+    def personalization(cls):
+        cls.train_loader, cls.val_loader, cls.local_gandlf_config = get_loaders(train_csv_path=cls.train_csv_path, 
+                                                                                 val_csv_path=cls.val_csv_path, 
+                                                                                 parameters=cls.local_gandlf_config)
+        return cls
+
     for idx, collaborator in enumerate(collaborators):
         train_csv_path = os.path.join(args.csvdirpath, ("_".join(["seg_test","train",collaborator.name])+".csv"))
-        test_csv_path = os.path.join(args.csvdirpath, ("_".join(["seg_test","val",collaborator.name])+".csv"))
-        train_loader, test_loader, local_gandlf_config = get_loaders(parameters=gandlf_config,
-                                                train_csv_path=train_csv_path, 
-                                                val_csv_path=test_csv_path)
+        val_csv_path = os.path.join(args.csvdirpath, ("_".join(["seg_test","val",collaborator.name])+".csv"))
+
+        # TODO: Below is to populate additional information into the gandlf_config. Using
+        #       a function more targeted to that goal alone would be more optimal
+        _, _, local_gandlf_config = get_loaders(train_csv_path=train_csv_path, 
+                                                val_csv_path=val_csv_path, 
+                                                parameters=gandlf_config)
+
         collaborator.private_attributes = {
-                'train_loader': train_loader,
-                'test_loader' : test_loader,
+                'train_csv_path': train_csv_path,
+                'val_csv_path' : val_csv_path,
                 'params'      : local_gandlf_config 
         }
+        clone_personalization[collaborator.name] = personalization
+        
 
     local_runtime = LocalRuntime(aggregator=aggregator, collaborators=collaborators)
     print(f'Local runtime collaborators = {local_runtime.collaborators}')
     
-    model = get_model(gandlf_config)
+    # Here we use the last local config, there is no collaborator specific info used here by get_model however
+    model = get_model(local_gandlf_config)
     top_model_accuracy = 0
     num_of_rounds = 10
 
@@ -344,7 +362,8 @@ if __name__ == '__main__':
                            collaborator_names=None,
                            device=device,
                            total_rounds=num_of_rounds,
-                           top_model_accuracy=top_model_accuracy)
+                           top_model_accuracy=top_model_accuracy, 
+                           clone_personalization=clone_personalization)
     flflow.runtime = local_runtime
     # Brandon DEBUG
     deepcopy(flflow)
