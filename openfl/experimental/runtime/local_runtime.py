@@ -149,8 +149,7 @@ class LocalRuntime(Runtime):
             )
 
             for col in selected_collaborators:
-                # Brandon exploring changing to class instance below
-                clone = flspec_obj._clones[col]
+                clone = FLSpec._clones[col]
                 if (
                     "exclude" in kwargs and hasattr(clone, kwargs["exclude"][0])
                 ) or (
@@ -163,8 +162,7 @@ class LocalRuntime(Runtime):
                 clone._foreach_methods = flspec_obj._foreach_methods
 
             for col in selected_collaborators:
-                # Brandon exploring changing to class instance below
-                clone = flspec_obj._clones[col]
+                clone = FLSpec._clones[col]
                 clone.input = col
                 if aggregator_to_collaborator(f, parent_func):
                     # remove private aggregator state
@@ -179,8 +177,7 @@ class LocalRuntime(Runtime):
             if self.backend == "ray":
                 ray_executor = RayExecutor()
             for col in selected_collaborators:
-                # Brandon exploring use of class instance below
-                clone = flspec_obj._clones[col]
+                clone = FLSpec._clones[col]
                 # Set new LocalRuntime for clone as it is required
                 # for calling execute_task and also new runtime
                 # object will not contain private attributes of
@@ -210,7 +207,7 @@ class LocalRuntime(Runtime):
                 del clones
                 gc.collect()
             for col in selected_collaborators:
-                clone = flspec_obj._clones[col]
+                clone = FLSpec._clones[col]
                 func = clone.execute_next
                 for attr in self.__collaborators[
                     clone.input
@@ -227,7 +224,7 @@ class LocalRuntime(Runtime):
             g = getattr(flspec_obj, func)
             # remove private collaborator state
             gc.collect()
-            g([flspec_obj._clones[col] for col in selected_collaborators])
+            g([FLSpec._clones[col] for col in selected_collaborators])
         else:
             to_exec = getattr(flspec_obj, f.__name__)
             to_exec()
