@@ -165,7 +165,7 @@ class FederatedFlow(FLSpec):
     # Brandon adding a task to initialize loaders, we will see why we cannot add it to the foreach
     # methods later
 
-    @collaborator
+    @collaborator(num_gpus=1)
     def initialize_loaders(self):
         # Brandon DEBUG
         print(f"BrandonDEBUG: device at loader initialization is: {self.device}")
@@ -176,7 +176,7 @@ class FederatedFlow(FLSpec):
                 self.train_loader, self.val_loader, _ = get_loaders(parameters=self.params, train_csv_path=self.train_csv_path, val_csv_path=self.val_csv_path)
         self.next(self.aggregated_model_validation)
 
-    @collaborator
+    @collaborator(num_gpus=1)
     def aggregated_model_validation(self):
         # Brandon DEBUG
         print(f"Brandon DEBUG: device at agg model val is: {self.device}")
@@ -208,7 +208,7 @@ class FederatedFlow(FLSpec):
         print(f'{self.input} value of {self.agg_validation_score}')
         self.next(self.train)
     
-    @collaborator
+    @collaborator(num_gpus=1)
     def train(self):
         print(f'Performing model training for collaborator {self.input} on Device {self.device[self.input]}')
         
@@ -229,7 +229,7 @@ class FederatedFlow(FLSpec):
 
         self.next(self.local_model_validation)
 
-    @collaborator
+    @collaborator(num_gpus=1)
     def local_model_validation(self):
         print(f'Performing local model validation for collaborator {self.input} on Device {self.device[self.input]}')
 
@@ -375,7 +375,7 @@ if __name__ == '__main__':
         clone_personalization[collaborator.name] = personalization
         
 
-    local_runtime = LocalRuntime(aggregator=aggregator, collaborators=collaborators)
+    local_runtime = LocalRuntime(aggregator=aggregator, collaborators=collaborators, backend='ray')
     print(f'Local runtime collaborators = {local_runtime.collaborators}')
     
     # Here we use the last local config, there is no collaborator specific info used here by get_model however

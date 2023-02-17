@@ -60,6 +60,9 @@ class FLSpec:
             self._foreach_methods = []
             FLSpec._reset_clones()
             FLSpec._create_clones(self, self.runtime.collaborators)
+            
+            # here is where the clone personalization happens
+
             # the start function can just be invoked locally
             if self._checkpoint:
                 print(f"Created flow {self.__class__.__name__}")
