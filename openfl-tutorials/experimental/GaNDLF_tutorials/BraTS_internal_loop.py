@@ -36,6 +36,8 @@ from GANDLF.schedulers import get_scheduler
 from GANDLF.optimizers import get_optimizer
 import os
 os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3,4,5"
+# Brandon DEBUG
+print(f"Brandon DEBUG: just after os.environ: IS CUDA AVIALABLE?: {torch.cuda.is_available()}")
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -126,7 +128,6 @@ def inference(network, test_loader, scheduler, round_num, params):
                                                             params=params,
                                                             epoch=round_num,
                                                             mode="validation")
-    valid_metric_dict = {}
     valid_metric_dict = {'loss': epoch_valid_loss}
     for k, v in epoch_valid_metric.items():
         valid_metric_dict[f'valid_{k}'] = v
@@ -147,6 +148,8 @@ class FederatedFlow(FLSpec):
         self.total_rounds = total_rounds
         self.top_model_accuracy = top_model_accuracy
         self.device = device
+        # Brandon DEBUG
+        print(f"Brandon DEBUG: device inside init is: {self.device}")
         self.round_num = 0  
 
     # starting round
@@ -156,10 +159,27 @@ class FederatedFlow(FLSpec):
         self.collaborators = self.runtime.collaborators
         self.private = 10
 
-        self.next(self.aggregated_model_validation, foreach='collaborators', exclude=['private'])
+        self.next(self.initialize_loaders, foreach='collaborators', exclude=['private'])
+
+    
+    # Brandon adding a task to initialize loaders, we will see why we cannot add it to the foreach
+    # methods later
+
+    @collaborator
+    def initialize_loaders(self):
+        # Brandon DEBUG
+        print(f"BrandonDEBUG: device at loader initialization is: {self.device}")
+        if not hasattr(self, 'train_loader'):
+            if hasattr(self, 'val_loader'):
+                raise ValueError(f"Weird issue where val loader is defined but train loader is not.")
+            else:
+                self.train_loader, self.val_loader, _ = get_loaders(parameters=self.params, train_csv_path=self.train_csv_path, val_csv_path=self.val_csv_path)
+        self.next(self.aggregated_model_validation)
 
     @collaborator
     def aggregated_model_validation(self):
+        # Brandon DEBUG
+        print(f"Brandon DEBUG: device at agg model val is: {self.device}")
         print(f'Performing aggregated model validation for collaborator {self.input} on Device {self.device[self.input]}')
         params = self.params   # load parameters from gandlf config
         
@@ -305,12 +325,15 @@ if __name__ == '__main__':
     aggregator.private_attributes = {}
 
     # Setup collaborators with private attributes
-    # Brandon changes for quick test runs
-    # collaborator_names = [str(n) for n in range(1,4)]
-    collaborator_names = ['0']
+    collaborator_names = [str(n) for n in range(1,4)]
     collaborators = [Collaborator(name=name) for name in collaborator_names]
     
+    # Brandon DEBUG
+    print(f"Brandon DEBUG: arsg: {args}")
+
     if args.gpu == 'single':
+        # Brandon DEBUG
+        print(f"Brandon DEBUG: args.gpu single and setting new value to device")
         if torch.cuda.is_available():
             device = {collaborators[i].name: torch.device(f'cuda:{args.deviceid_single}') for i in range(len(collaborator_names))}
         else:
