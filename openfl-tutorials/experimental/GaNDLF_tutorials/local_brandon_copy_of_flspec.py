@@ -201,6 +201,10 @@ class FLSpec:
 
         self._display_transition_logs(f, parent_func)
 
+        # Brandon DEBUG
+        print(f"Brandon DEBUG, inside next just before _runtime.execute_task is called, FLSpec._clones: {FLSpec._clones}")
+        print(f"parent is: {parent}")
+
         self._runtime.execute_task(
             self,
             f,

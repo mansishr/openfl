@@ -135,11 +135,17 @@ class LocalRuntime(Runtime):
                                (i.e. restoring aggregator state after collaborator
                                execution)
         """
+        # Brandon DEBUG
+        print(f"Brandon DEBUG: just at beggining of execute_task, flspec_obj._clones: {flspec_obj._clones}")
+
         from openfl.experimental.interface import (
             FLSpec,
             final_attributes,
         )
 
+        # Brandon DEBUG
+        print(f"Brandon DEBUG: begging of execute_task after FLSpec is imported, flspec_obj._clones: {flspec_obj._clones}")
+        
         global final_attributes
 
         if "foreach" in kwargs:

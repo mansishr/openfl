@@ -47,6 +47,25 @@ import pickle
 random_seed = 1234
 torch.manual_seed(random_seed)
 
+
+# Brandon trying to enable serialization of each data loader
+class Brandon_loader(object):
+
+    def __init__(self, info):
+        self.info = info
+        gandlf_config, data_paths = self.info
+        self.loaders = get_loaders(parameters=gandlf_config, 
+                                  train_csv_path=data_paths[0], 
+                                  val_csv_path=data_paths[1])
+
+    def __reduce__(self):
+        unpack = Brandon_loader
+        packed_data = self.info
+        return unpack, packed_data
+
+
+
+
 def gandlf_dict_to_feature(subject_dict, gandlf_config):
     return (torch.cat([subject_dict[key][DATA] for key in gandlf_config["channel_keys"]], 
                              dim=1).float().to(gandlf_config["device"]))
@@ -109,7 +128,7 @@ def get_loaders(parameters, train_csv_path=None, val_csv_path=None):
     else:
         raise Exception("Validation csv data is required")
 
-    return train_loader, val_loader, parameters
+    return (train_loader, val_loader, parameters)
 
 def FedAvg(models):
     new_model = models[0]
@@ -159,6 +178,9 @@ class FederatedFlow(FLSpec):
         self.collaborators = self.runtime.collaborators
         self.private = 10
 
+        # Brandon DEBUG
+        print(f"Brandon DEBUG at start just before next is called, FLSpec._clones are: {FLSpec._clones}")
+
         self.next(self.initialize_loaders, foreach='collaborators', exclude=['private'])
 
     
@@ -173,7 +195,8 @@ class FederatedFlow(FLSpec):
             if hasattr(self, 'val_loader'):
                 raise ValueError(f"Weird issue where val loader is defined but train loader is not.")
             else:
-                self.train_loader, self.val_loader, _ = get_loaders(parameters=self.params, train_csv_path=self.train_csv_path, val_csv_path=self.val_csv_path)
+                hello_bogus_variable = 0
+                # self.train_loader, self.val_loader, _ = get_loaders(parameters=self.params, train_csv_path=self.train_csv_path, val_csv_path=self.val_csv_path)
         self.next(self.aggregated_model_validation)
 
     @collaborator(num_gpus=1)
@@ -181,6 +204,10 @@ class FederatedFlow(FLSpec):
         # Brandon DEBUG
         print(f"Brandon DEBUG: device at agg model val is: {self.device}")
         print(f'Performing aggregated model validation for collaborator {self.input} on Device {self.device[self.input]}')
+        
+        brandon_loader = Brandon_loader((self.params, (self.train_csv_path, self.val_csv_path)))
+        self.train_loader, self.val_loader, _ = brandon_loader.loaders
+        
         params = self.params   # load parameters from gandlf config
         
         self.model = self.model.to(self.device[self.input])
@@ -206,12 +233,19 @@ class FederatedFlow(FLSpec):
         self.params = params
 
         print(f'{self.input} value of {self.agg_validation_score}')
+
+        self.train_loader = None
+        self.val_loader = None
         self.next(self.train)
     
     @collaborator(num_gpus=1)
     def train(self):
         print(f'Performing model training for collaborator {self.input} on Device {self.device[self.input]}')
         
+        # Brandon DEBUG
+        brandon_loader = Brandon_loader((self.params, (self.train_csv_path, self.val_csv_path)))
+        self.train_loader, self.val_loader, _ = brandon_loader.loaders
+
         self.model.train()
         epochs = self.params["num_epochs"]
         for epoch in range(epochs):
@@ -227,15 +261,34 @@ class FederatedFlow(FLSpec):
         print(f'{self.input} value of {self.local_train_score}')
         self.training_completed = True
 
+        self.train_loader = None
+        self.val_loader = None
+
         self.next(self.local_model_validation)
 
     @collaborator(num_gpus=1)
     def local_model_validation(self):
+
+        # Brandon DEBUG
+        brandon_loader = Brandon_loader((self.params, (self.train_csv_path, self.val_csv_path)))
+        self.train_loader, self.val_loader, _ = brandon_loader.loaders
+
         print(f'Performing local model validation for collaborator {self.input} on Device {self.device[self.input]}')
 
         self.local_validation_score = inference(self.model, self.val_loader, self.scheduler, self.round_num, self.params)
         
         print(f'{self.input} value of {self.local_validation_score}')
+
+        # Brandon DEBUG
+        self.train_loader = None
+        self.val_loader = None
+
+        self.next(self.remove_loaders)
+
+    @collaborator(num_gpus=1)
+    def remove_loaders(self):
+        self.train_loader = None
+        self.val_loader = None       
         self.next(self.join, exclude=['training_completed'])
 
     @aggregator
@@ -325,7 +378,9 @@ if __name__ == '__main__':
     aggregator.private_attributes = {}
 
     # Setup collaborators with private attributes
-    collaborator_names = [str(n) for n in range(1,4)]
+    # collaborator_names = [str(n) for n in range(1,4)]
+    # Brandon DEBUG using below instead of above
+    collaborator_names = [str(n) for n in range(1,2)]
     collaborators = [Collaborator(name=name) for name in collaborator_names]
     
     # Brandon DEBUG
