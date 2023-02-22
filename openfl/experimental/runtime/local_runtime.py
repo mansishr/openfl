@@ -201,6 +201,8 @@ class LocalRuntime(Runtime):
                 # ensure clone is getting latest _metaflow_interface
                 clone._metaflow_interface = flspec_obj._metaflow_interface
                 if self.backend == "ray":
+                    # Brandon DEBUG
+                    print(f"\n\nBrandon DEBUG: calling ray_call_put on clone with function {f.name}\n\n")
                     ray_executor.ray_call_put(clone, to_exec)
                 else:
                     to_exec()

@@ -9,6 +9,7 @@ import numpy as np
 import torchio
 from tqdm import tqdm
 
+import ray
 
 from openfl.experimental.interface import Aggregator, Collaborator
 from local_brandon_copy_of_flspec import FLSpec
@@ -53,18 +54,16 @@ class Brandon_loader(object):
 
     def __init__(self, info):
         self.info = info
-        gandlf_config, data_paths = self.info
-        self.loaders = get_loaders(parameters=gandlf_config, 
-                                  train_csv_path=data_paths[0], 
-                                  val_csv_path=data_paths[1])
+        parameters, csv_path, train = self.info
+        self.loader, parameters = get_single_loader(parameters=parameters, train=True, csv_path=csv_path)
+        # parameters may have been modified above
+        self.info = (parameters, csv_path, train)
 
-    def __reduce__(self):
-        unpack = Brandon_loader
-        packed_data = self.info
-        return unpack, packed_data
+    def __iter__(self):
+        return self.loader.__iter__()
 
-
-
+    def __len__(self):
+        return len(self.loader)
 
 def gandlf_dict_to_feature(subject_dict, gandlf_config):
     return (torch.cat([subject_dict[key][DATA] for key in gandlf_config["channel_keys"]], 
@@ -83,7 +82,7 @@ def get_loaders(parameters, train_csv_path=None, val_csv_path=None):
     Args:
         parameters (dict): The parameters dictionary.
         train_csv_path (str): The path to the train CSV file.
-        test_csv_path (str): The path to the test CSV file.
+        val_csv_path (str): The path to the test CSV file.
     Returns:
         train_loader (torch.utils.data.DataLoader): The training data loader.
         val_loader (torch.utils.data.DataLoader): The validation data loader.
@@ -130,6 +129,41 @@ def get_loaders(parameters, train_csv_path=None, val_csv_path=None):
 
     return (train_loader, val_loader, parameters)
 
+
+def get_single_loader(parameters, train, csv_path):
+    """
+    This function creates a data loader.
+    Args:
+        parameters (dict): The parameters dictionary.
+        train (bool): Whether or not the loader will be used for training (augmentation, patching, ...)
+        csv_path (str): The path to the CSV file.
+    Returns:
+        loader (torch.utils.data.DataLoader): A data loader for train or val or test.
+    """
+
+    # initialize loaders
+    loader, headers = None, None
+
+    if train:
+        parameter_key = 'training_data'
+    else:
+        parameter_key = 'validation_data'
+
+    # populate the data frames for the loader
+    parameters[parameter_key], headers = parseTrainingCSV(csv_path, train=train)
+    parameters = populate_header_in_parameters(parameters, headers)
+
+    if train:
+        loader = get_train_loader(parameters)
+        # Calculate the weights here
+        (
+            parameters["weights"],
+            parameters["class_weights"],
+        ) = get_class_imbalance_weights(parameters["training_data"], parameters)
+
+    return (loader, parameters)
+
+
 def FedAvg(models):
     new_model = models[0]
     state_dicts = [model.state_dict() for model in models]
@@ -157,6 +191,9 @@ def optimizer_to_device(optimizer, device):
         param.data = param.data.to(device)
         if param.grad is not None:
             param.grad = param.grad.to(device)
+
+
+
 
 class FederatedFlow(FLSpec):
 
@@ -205,10 +242,16 @@ class FederatedFlow(FLSpec):
         print(f"Brandon DEBUG: device at agg model val is: {self.device}")
         print(f'Performing aggregated model validation for collaborator {self.input} on Device {self.device[self.input]}')
         
-        brandon_loader = Brandon_loader((self.params, (self.train_csv_path, self.val_csv_path)))
-        self.train_loader, self.val_loader, _ = brandon_loader.loaders
+        self.train_loader = Brandon_loader((self.params, 
+                                            self.train_csv_path, 
+                                            True))
+        self.params, _, _ = self.train_loader.info 
+        self.val_loader = Brandon_loader((self.params, 
+                                            self.val_csv_path, 
+                                            False)) 
+        self.params, _, _ = self.val_loader.info
         
-        params = self.params   # load parameters from gandlf config
+        params = self.params 
         
         self.model = self.model.to(self.device[self.input])
         assert next(self.model.parameters()).device == self.device[self.input]
@@ -243,8 +286,14 @@ class FederatedFlow(FLSpec):
         print(f'Performing model training for collaborator {self.input} on Device {self.device[self.input]}')
         
         # Brandon DEBUG
-        brandon_loader = Brandon_loader((self.params, (self.train_csv_path, self.val_csv_path)))
-        self.train_loader, self.val_loader, _ = brandon_loader.loaders
+        self.train_loader = Brandon_loader((self.params, 
+                                            self.train_csv_path, 
+                                            True))
+        self.params, _, _ = self.train_loader.info 
+        self.val_loader = Brandon_loader((self.params, 
+                                            self.val_csv_path, 
+                                            False)) 
+        self.params, _, _ = self.val_loader.info
 
         self.model.train()
         epochs = self.params["num_epochs"]
@@ -270,8 +319,14 @@ class FederatedFlow(FLSpec):
     def local_model_validation(self):
 
         # Brandon DEBUG
-        brandon_loader = Brandon_loader((self.params, (self.train_csv_path, self.val_csv_path)))
-        self.train_loader, self.val_loader, _ = brandon_loader.loaders
+        self.train_loader = Brandon_loader((self.params, 
+                                            self.train_csv_path, 
+                                            True))
+        self.params, _, _ = self.train_loader.info 
+        self.val_loader = Brandon_loader((self.params, 
+                                            self.val_csv_path, 
+                                            False)) 
+        self.params, _, _ = self.val_loader.info
 
         print(f'Performing local model validation for collaborator {self.input} on Device {self.device[self.input]}')
 
@@ -366,6 +421,8 @@ if __name__ == '__main__':
     
     args = argparser.parse_args()
 
+    from __main__ import FederatedFlow
+
     # GaNDLF config
     gandlf_config_path = os.path.join(args.config)
     gandlf_config = parseConfig(gandlf_config_path)
@@ -432,6 +489,49 @@ if __name__ == '__main__':
 
     local_runtime = LocalRuntime(aggregator=aggregator, collaborators=collaborators, backend='ray')
     print(f'Local runtime collaborators = {local_runtime.collaborators}')
+
+    # Now let's define some custom serialization methods
+
+    def custom_brandon_loader_serializer(brandon_loader):
+        return brandon_loader.info
+
+    def custom_brandon_loader_deserializer(loader_info):
+        return Brandon_loader(loader_info)
+
+    # Register serializer and deserializer for class A:
+    ray.util.register_serializer(Brandon_loader, 
+                                 serializer=custom_brandon_loader_serializer, 
+                                 deserializer=custom_brandon_loader_deserializer)
+
+    """
+    def custom_flflow_serializer(flflow_obj):
+        if hasattr(flflow_obj, 'train_loader') and (flflow_obj.train_loader is not None):
+            flflow_obj.train_loader = flflow_obj.train_loader.info
+        else:
+            flflow_obj.train_loader = None
+        if hasattr(flflow_obj, 'val_loader') and (flflow_obj.val_loader is not None):
+            flflow_obj.val_loader = flflow_obj.val_loader.info
+        else:
+            flflow_obj.val_loader = None
+        return pickle.dumps(flflow_obj)
+
+    def custom_flflow_deserializer(serialization):
+        flflow_obj = pickle.loads(serialization)
+        if hasattr(flflow_obj, 'train_loader') and (flflow_obj.train_loader is not None): 
+            flflow_obj.train_loader = Brandon_loader(flflow_obj.train_loader)
+        else:
+            flflow_obj.train_loader = None
+        if hasattr(flflow_obj, 'val_loader') and (flflow_obj.val_loader is not None):
+            flflow_obj.val_loader = Brandon_loader(flflow_obj.val_loader)
+        else:
+            flflow_obj.val_loader = None
+        return flflow_obj
+
+    # Register serializer and deserializer for class FederatedFlow:
+    ray.util.register_serializer(FederatedFlow, 
+                                 serializer=custom_flflow_serializer, 
+                                 deserializer=custom_flflow_deserializer)
+    """
     
     # Here we use the last local config, there is no collaborator specific info used here by get_model however
     model = get_model(local_gandlf_config)
@@ -447,5 +547,5 @@ if __name__ == '__main__':
     flflow.runtime = local_runtime
     # Brandon DEBUG
     deepcopy(flflow)
-    print("BRANDON DEBUG, deepdcopied succesfully before run")
+    print("BRANDON DEBUG, deepcopied succesfully before run")
     flflow.run()
