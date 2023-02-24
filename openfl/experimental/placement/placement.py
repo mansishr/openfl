@@ -28,9 +28,7 @@ class RayExecutor:
         del ref_ctx
 
     def get_remote_clones(self):
-        print("\n\n### B Modified ###\n\n")
-        obj = ray.get(self.remote_functions)
-        clones = deepcopy(obj)
+        clones = deepcopy(ray.get(self.remote_functions))
         del self.remote_functions
         # Remove clones from ray object store
         for ctx in self.remote_contexts:
@@ -46,9 +44,10 @@ def make_remote(f: Callable, num_gpus: int) -> Callable:
     Args:
         num_gpus: Defines the number of GPUs to request for a task
     """
-    f = ray.put(f)
 
-    print(f"\n\nBrandon DEBUG: making remote (wrapping) function: f.__name__\n\n")
+    print(f"\n################\nBrandon DEBUG: making remote (wrapping) function: {f}\n################\n")
+
+    f = ray.put(f)
 
     @functools.wraps(f)
     @ray.remote(num_gpus=num_gpus, max_calls=1)

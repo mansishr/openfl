@@ -37,8 +37,6 @@ from GANDLF.schedulers import get_scheduler
 from GANDLF.optimizers import get_optimizer
 import os
 os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3,4,5"
-# Brandon DEBUG
-print(f"Brandon DEBUG: just after os.environ: IS CUDA AVIALABLE?: {torch.cuda.is_available()}")
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -204,8 +202,6 @@ class FederatedFlow(FLSpec):
         self.total_rounds = total_rounds
         self.top_model_accuracy = top_model_accuracy
         self.device = device
-        # Brandon DEBUG
-        print(f"Brandon DEBUG: device inside init is: {self.device}")
         self.round_num = 0  
 
     # starting round
@@ -218,28 +214,10 @@ class FederatedFlow(FLSpec):
         # Brandon DEBUG
         print(f"Brandon DEBUG at start just before next is called, FLSpec._clones are: {FLSpec._clones}")
 
-        self.next(self.initialize_loaders, foreach='collaborators', exclude=['private'])
-
-    
-    # Brandon adding a task to initialize loaders, we will see why we cannot add it to the foreach
-    # methods later
-
-    @collaborator(num_gpus=1)
-    def initialize_loaders(self):
-        # Brandon DEBUG
-        print(f"BrandonDEBUG: device at loader initialization is: {self.device}")
-        if not hasattr(self, 'train_loader'):
-            if hasattr(self, 'val_loader'):
-                raise ValueError(f"Weird issue where val loader is defined but train loader is not.")
-            else:
-                hello_bogus_variable = 0
-                # self.train_loader, self.val_loader, _ = get_loaders(parameters=self.params, train_csv_path=self.train_csv_path, val_csv_path=self.val_csv_path)
-        self.next(self.aggregated_model_validation)
+        self.next(self.aggregated_model_validation, foreach='collaborators', exclude=['private'])
 
     @collaborator(num_gpus=1)
     def aggregated_model_validation(self):
-        # Brandon DEBUG
-        print(f"Brandon DEBUG: device at agg model val is: {self.device}")
         print(f'Performing aggregated model validation for collaborator {self.input} on Device {self.device[self.input]}')
         
         self.train_loader = Brandon_loader((self.params, 
@@ -290,10 +268,6 @@ class FederatedFlow(FLSpec):
                                             self.train_csv_path, 
                                             True))
         self.params, _, _ = self.train_loader.info 
-        self.val_loader = Brandon_loader((self.params, 
-                                            self.val_csv_path, 
-                                            False)) 
-        self.params, _, _ = self.val_loader.info
 
         self.model.train()
         epochs = self.params["num_epochs"]
@@ -311,7 +285,6 @@ class FederatedFlow(FLSpec):
         self.training_completed = True
 
         self.train_loader = None
-        self.val_loader = None
 
         self.next(self.local_model_validation)
 
@@ -319,10 +292,6 @@ class FederatedFlow(FLSpec):
     def local_model_validation(self):
 
         # Brandon DEBUG
-        self.train_loader = Brandon_loader((self.params, 
-                                            self.train_csv_path, 
-                                            True))
-        self.params, _, _ = self.train_loader.info 
         self.val_loader = Brandon_loader((self.params, 
                                             self.val_csv_path, 
                                             False)) 
@@ -332,18 +301,10 @@ class FederatedFlow(FLSpec):
 
         self.local_validation_score = inference(self.model, self.val_loader, self.scheduler, self.round_num, self.params)
         
-        print(f'{self.input} value of {self.local_validation_score}')
-
-        # Brandon DEBUG
-        self.train_loader = None
         self.val_loader = None
 
-        self.next(self.remove_loaders)
+        print(f'{self.input} value of {self.local_validation_score}')
 
-    @collaborator(num_gpus=1)
-    def remove_loaders(self):
-        self.train_loader = None
-        self.val_loader = None       
         self.next(self.join, exclude=['training_completed'])
 
     @aggregator
@@ -458,17 +419,6 @@ if __name__ == '__main__':
     else:
         raise Exception('input should be single or multi')
 
-    # Functions to be applied to the per-collaborator flow object clones
-    # in order to instantiate the data loaders of each collaborator
-    clone_personalization = {}
-    def personalization(cls):
-        # TODO: remove print below Brandon DEBUG
-        print(f"\n###############################\n Personalizing NOW\n#############################\n\n")
-        cls.train_loader, cls.val_loader, cls.local_gandlf_config = get_loaders(train_csv_path=cls.train_csv_path, 
-                                                                                 val_csv_path=cls.val_csv_path, 
-                                                                                 parameters=cls.local_gandlf_config)
-        return cls
-
     for idx, collaborator in enumerate(collaborators):
         train_csv_path = os.path.join(args.csvdirpath, ("_".join(["seg_test","train",collaborator.name])+".csv"))
         val_csv_path = os.path.join(args.csvdirpath, ("_".join(["seg_test","val",collaborator.name])+".csv"))
@@ -484,7 +434,6 @@ if __name__ == '__main__':
                 'val_csv_path' : val_csv_path,
                 'params'      : local_gandlf_config 
         }
-        clone_personalization[collaborator.name] = personalization
         
 
     local_runtime = LocalRuntime(aggregator=aggregator, collaborators=collaborators, backend='ray')
@@ -498,7 +447,7 @@ if __name__ == '__main__':
     def custom_brandon_loader_deserializer(loader_info):
         return Brandon_loader(loader_info)
 
-    # Register serializer and deserializer for class A:
+    # Register serializer and deserializer for class Brandon_loader:
     ray.util.register_serializer(Brandon_loader, 
                                  serializer=custom_brandon_loader_serializer, 
                                  deserializer=custom_brandon_loader_deserializer)
@@ -542,8 +491,7 @@ if __name__ == '__main__':
                            collaborator_names=None,
                            device=device,
                            total_rounds=num_of_rounds,
-                           top_model_accuracy=top_model_accuracy, 
-                           clone_personalization=clone_personalization)
+                           top_model_accuracy=top_model_accuracy)
     flflow.runtime = local_runtime
     # Brandon DEBUG
     deepcopy(flflow)

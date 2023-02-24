@@ -27,19 +27,11 @@ class FLSpec:
     _clones = {}
     _initial_state = None
 
-    def __init__(self, checkpoint: bool = False, clone_personalization = None):
-        if clone_personalization is None:
-            self._foreach_methods = []
-        else:
-           self._foreach_methods = [clone_personalization] 
+    def __init__(self, checkpoint: bool = False):
         self._checkpoint = checkpoint
-        self.clone_personalization = clone_personalization
         
     @classmethod
     def _create_clones(cls, instance: Type[FLSpec], names: List[str]) -> None:
-        """
-        TODO: Now that these are going to be personalized, shall we call them something different than clones?
-        """
         """Creates clones for instance for each collaborator in names"""
         cls._clones = {name: deepcopy(instance) for name in names}
 
@@ -52,16 +44,6 @@ class FLSpec:
     def save_initial_state(cls, instance: Type[FLSpec]) -> None:
         """Save initial state of instance before executing the flow"""
         cls._initial_state = deepcopy(instance)
-
-    # TODO: remove below?
-    """
-    def _personalize_clones(self):
-        if set(self._clones.keys()) != set(self.clone_personalization.keys()):
-            raise ValueError(f"Trying to personalize clones when the clone keys: {self._clones.keys()} do not match personalization keys: {self.clone_personalization.keys()}.")
-        else:
-            for name in self._clones.keys():
-                self._clones[name] = self.clone_personalization[name](self._clones[name])
-    """
 
     def run(self) -> None:
         """Starts the execution of the flow"""
@@ -77,13 +59,9 @@ class FLSpec:
             self._foreach_methods = []
             FLSpec._reset_clones()
             FLSpec._create_clones(self, self.runtime.collaborators)
+            
             print(f"Brandon DEBUG: clones: {FLSpec._clones}")
-            # TODO: Remove below?
-            # Clones may be personalized with per-collaborator functions that modify the flow object
-            """
-            if self.clone_personalization is not None:
-                self._personalize_clones()
-            """
+            
             # the start function can just be invoked locally
             if self._checkpoint:
                 print(f"Created flow {self.__class__.__name__}")
