@@ -136,7 +136,7 @@ class LocalRuntime(Runtime):
                                execution)
         """
         # Brandon DEBUG
-        print(f"Brandon DEBUG: just at beggining of execute_task, flspec_obj._clones: {flspec_obj._clones}")
+        print(f"Brandon DEBUG: just at begining of execute_task, flspec_obj._clones: {flspec_obj._clones}")
 
         from openfl.experimental.interface import (
             FLSpec,
@@ -144,7 +144,7 @@ class LocalRuntime(Runtime):
         )
 
         # Brandon DEBUG
-        print(f"Brandon DEBUG: begging of execute_task after FLSpec is imported, flspec_obj._clones: {flspec_obj._clones}")
+        print(f"Brandon DEBUG: begining of execute_task after FLSpec is imported, flspec_obj._clones: {flspec_obj._clones}")
         
         global final_attributes
 

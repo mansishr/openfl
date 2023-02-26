@@ -57,6 +57,11 @@ class Brandon_loader(object):
         # parameters may have been modified above
         self.info = (parameters, csv_path, train)
 
+    def __reduce__(self):
+        unpack = Brandon_loader
+        packaged_info = self.info
+        return unpack, packaged_info
+
     def __iter__(self):
         return self.loader.__iter__()
 
@@ -255,8 +260,8 @@ class FederatedFlow(FLSpec):
 
         print(f'{self.input} value of {self.agg_validation_score}')
 
-        self.train_loader = None
-        self.val_loader = None
+        delattr(self, 'train_loader')
+        delattr(self, 'val_loader')
         self.next(self.train)
     
     @collaborator(num_gpus=1)
@@ -284,7 +289,7 @@ class FederatedFlow(FLSpec):
         print(f'{self.input} value of {self.local_train_score}')
         self.training_completed = True
 
-        self.train_loader = None
+        delattr(self, 'train_loader')
 
         self.next(self.local_model_validation)
 
@@ -301,7 +306,7 @@ class FederatedFlow(FLSpec):
 
         self.local_validation_score = inference(self.model, self.val_loader, self.scheduler, self.round_num, self.params)
         
-        self.val_loader = None
+        delattr(self, 'val_loader')
 
         print(f'{self.input} value of {self.local_validation_score}')
 
