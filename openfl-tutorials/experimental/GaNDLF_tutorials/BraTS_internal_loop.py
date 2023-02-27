@@ -158,11 +158,16 @@ def get_single_loader(parameters, train, csv_path):
 
     if train:
         loader = get_train_loader(parameters)
+        parameters["training_samples_size"] = len(loader)
         # Calculate the weights here
         (
             parameters["weights"],
             parameters["class_weights"],
         ) = get_class_imbalance_weights(parameters["training_data"], parameters)
+
+    else:
+        # get the validation loader
+        loader = get_validation_loader(parameters)
 
     return (loader, parameters)
 

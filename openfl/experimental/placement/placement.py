@@ -29,6 +29,11 @@ class RayExecutor:
 
     def get_remote_clones(self):
         clones = deepcopy(ray.get(self.remote_functions))
+
+        # Brandon debug
+        rfts = [type(fun) for fun in self.remote_functions]
+        print(f"\n###################\nRemote functions are of type: {rfts}\n\n")
+
         del self.remote_functions
         # Remove clones from ray object store
         for ctx in self.remote_contexts:
