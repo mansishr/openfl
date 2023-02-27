@@ -230,10 +230,8 @@ class FederatedFlow(FLSpec):
     def aggregated_model_validation(self):
         print(f'Performing aggregated model validation for collaborator {self.input} on Device {self.device[self.input]}')
         
-        self.train_loader = Brandon_loader((self.params, 
-                                            self.train_csv_path, 
-                                            True))
-        self.params, _, _ = self.train_loader.info 
+        # Brandon DEBUG - below commenting out instantiation and use of val loader
+        """
         self.val_loader = Brandon_loader((self.params, 
                                             self.val_csv_path, 
                                             False)) 
@@ -243,7 +241,7 @@ class FederatedFlow(FLSpec):
         
         self.model = self.model.to(self.device[self.input])
         assert next(self.model.parameters()).device == self.device[self.input]
-
+        
         # updating gandlf config
         params["model_parameters"] = model.parameters()
         self.optimizer = get_optimizer(params)
@@ -265,19 +263,25 @@ class FederatedFlow(FLSpec):
 
         print(f'{self.input} value of {self.agg_validation_score}')
 
-        delattr(self, 'train_loader')
         delattr(self, 'val_loader')
+        """
+
+        # Brandon DEBUG - setting artificial agg val score below to see if we can run without loaders
+        self.agg_validation_score = {'loss': 400.0, 'valid_dice': 0.5}
+
         self.next(self.train)
-    
+        
     @collaborator(num_gpus=1)
     def train(self):
         print(f'Performing model training for collaborator {self.input} on Device {self.device[self.input]}')
         
-        # Brandon DEBUG
+        # Brandon DEBUG commenting out train loader instantiation and usage below
+        """
         self.train_loader = Brandon_loader((self.params, 
                                             self.train_csv_path, 
                                             True))
         self.params, _, _ = self.train_loader.info 
+        
 
         self.model.train()
         epochs = self.params["num_epochs"]
@@ -292,15 +296,20 @@ class FederatedFlow(FLSpec):
             train_metric_dict[f'train_{k}'] = v
         self.local_train_score = train_metric_dict
         print(f'{self.input} value of {self.local_train_score}')
-        self.training_completed = True
 
         delattr(self, 'train_loader')
+        """
+        self.training_completed = True
+
+        # Brandon DEBUG below giving a fake loss
+        self.local_train_score = {'loss': 100.0, 'train_dice': 0.5}
 
         self.next(self.local_model_validation)
 
     @collaborator(num_gpus=1)
     def local_model_validation(self):
 
+        """
         # Brandon DEBUG
         self.val_loader = Brandon_loader((self.params, 
                                             self.val_csv_path, 
@@ -314,6 +323,10 @@ class FederatedFlow(FLSpec):
         delattr(self, 'val_loader')
 
         print(f'{self.input} value of {self.local_validation_score}')
+        """
+
+        # Brandon DEBUG - commented above so wanted to provide a face val score to see if it can run without loaders
+        self.local_validation_score = {'loss': 300.0, 'valid_dice': 0.5}
 
         self.next(self.join, exclude=['training_completed'])
 
@@ -408,7 +421,7 @@ if __name__ == '__main__':
     # Setup collaborators with private attributes
     # collaborator_names = [str(n) for n in range(1,4)]
     # Brandon DEBUG using below instead of above
-    collaborator_names = [str(n) for n in range(1,2)]
+    collaborator_names = [str(n) for n in range(1,3)]
     collaborators = [Collaborator(name=name) for name in collaborator_names]
     
     # Brandon DEBUG
