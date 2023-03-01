@@ -10,6 +10,9 @@ from GANDLF.data import (
 from GANDLF.models import global_models_dict
 from GANDLF.utils import populate_header_in_parameters, parseTrainingCSV, populate_channel_keys_in_params, get_class_imbalance_weights
 
+from privacy_meter.model import PytorchModel
+
+
 def subject_to_feature(subject_dict, gandlf_config):
     features = torch.cat([subject_dict[key][DATA] for key in gandlf_config["channel_keys"]], 
                              dim=1).float().to(gandlf_config["device"]).squeeze(dim=-1)
@@ -250,4 +253,81 @@ class GaNDLFLoaderWrapper(object):
         unpack = GaNDLFLoaderWrapper
         packaged_info = self.info
         return unpack, packaged_info
+
+
+class GaNDLFPyTorchModel(PytorchModel):
+    """
+    Inherits from the PyTorchModel class, an interface to query a model without any assumption on how it is implemented.
+    This particular class is to be used with pytorch models.
+    """
+
+    def __init__(self, model_obj, loss_fn, gandlf_config):
+        """Constructor
+        Args:
+            model_obj: Model object.
+            loss_fn: Loss function.
+        """
+
+        # Imports torch with global scope
+        globals()['torch'] = __import__('torch')
+
+        # Initializes the parent model
+        super().__init__(model_obj, loss_fn)
+
+        self.gandlf_config = gandlf_config
+
+    def concatenated_logits(self, restricted_feature_loader):
+        """Function to get the model output from restricted inputs.
+        Args:
+            restricted_feature_loader(GaNDLFLoaderWrapper): Wrapper for GaNDLF feature loader allowing slicing
+        Returns:
+            The concatenation of torch tensor model outputs over batches served up by the restricted feature loader.
+        """
+        with torch.no_grad():
+            per_batch_logits = []
+            for feature_batch in restricted_feature_loader:
+                per_batch_logits.append(self.model_obj(feature_batch).to("cpu"))
+            logits = torch.cat(per_batch_logits, dim=0)
+        return logits
+
+    def concatenated_labels(self, restricted_label_loader):
+        """Function to get the concatenation of torch tensor batch labels.
+        Args:
+            restricted_loader (GaNDLFLoaderWrapper): Model input.
+        Returns:
+            The concatenation of torch tensor batch labels.
+        """
+        per_batch_labels = []
+        for label_batch in restricted_label_loader:
+            per_batch_labels.append(label_batch.to("cpu"))
+        labels = torch.cat(per_batch_labels, dim=0)
+        return labels
+
+    def get_logits(self, restricted_feature_loader):
+        """Alias of concatenated_outputs.
+        """
+    
+        return self.concatenated_logits(restricted_feature_loader)
+
+    def get_loss(self, restricted_feature_loader, restricted_label_loader, per_point=True):
+        """Function to get the model loss on a given input and an expected output.
+        Args:
+            restricted_feature_loader (GaNDLFLoaderWrapper): Model input.
+            restricted_label_loader (GaNDLFLoaderWrapper): Model expected output.
+            per_point: Boolean indicating if loss should be returned per point or reduced.
+        Returns:
+            The loss value, as defined by the loss_fn attribute.
+        """
+        logits = self.concatenated_logits(restricted_feature_loader)
+        labels = self.concatenated_labels(restricted_label_loader)
+        if per_point:
+            return self.loss_fn_no_reduction(logits,labels).detach().numpy()
+        else:
+            return self.loss_fn(logits, labels).item()
+
+    def load_state_dict(self, state_dict):
+        self.model_obj.load_state_dict(state_dict)
+
+    def to(self, device):
+        self.model_obj.to(device)
 

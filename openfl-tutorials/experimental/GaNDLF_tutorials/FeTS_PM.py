@@ -48,7 +48,7 @@ from GANDLF.schedulers import get_scheduler
 from GANDLF.optimizers import get_optimizer
 from GANDLF.losses.segmentation import MCD
 
-from GaNDLF_utils import get_loaders, GaNDLFLoaderWrapper, subject_to_feature, subject_to_label
+from GaNDLF_utils import get_loaders, GaNDLFLoaderWrapper, subject_to_feature, subject_to_label, GaNDLFPyTorchModel
 
 warnings.filterwarnings("ignore")
 
@@ -102,114 +102,19 @@ def inference(network, test_loader, scheduler, round_num, params):
     return valid_metric_dict
 
 
-
-# TODO: make this work with GaNDLF models
-def load_previous_round_model_and_optimizer_and_perform_testing(
-    model, global_model, optimizer, collaborator_name, round_num, device
-):
-    """
-    Load pickle file to retrieve the model and optimizer state dictionary
-    from the previous round for each collaborator
-    and perform several validation routines with current
-    round state dictionaries to test the flow loop.
-    Note: this functionality can be enabled through the command line argument
-    by setting "--flow_internal_loop_test=True".
-
-    Args:
-        model: local collaborator model at the current round
-        global_model: Federated averaged model at the aggregator
-        optimizer: local collaborator optimizer at the current round
-        collaborator_name: name of the collaborator (Type:string)
-        round_num: current round (Type:int)
-        device: CUDA device id or "cpu"
-    """
-    print(f"Loading model and optimizer state dict for round {round_num-1}")
-    model_prevround = Net()  # instanciate a new model
-    model_prevround = model_prevround.to(device)
-    optimizer_prevround = default_optimizer(model_prevround, optimizer_like=optimizer)
-    if os.path.isfile(
-        f"Collaborator_{collaborator_name}_model_config_roundnumber_{round_num-1}.pickle"
-    ):
-        with open(
-            f"Collaborator_{collaborator_name}_model_config_roundnumber_{round_num-1}.pickle",
-            "rb",
-        ) as f:
-            model_prevround_config = pickle.load(f)
-            model_prevround.load_state_dict(model_prevround_config["model_state_dict"])
-            optimizer_prevround.load_state_dict(
-                model_prevround_config["optim_state_dict"]
-            )
-
-            for param_tensor in model.state_dict():
-                for tensor_1, tensor_2 in zip(
-                    model.state_dict()[param_tensor],
-                    global_model.state_dict()[param_tensor],
+def models_equal(model_1, model_2, version_key):
+    equal = True
+    for param_tensor in model_1.state_dict():
+            for tensor_1, tensor_2 in zip(
+                model_1.state_dict()[param_tensor],
+                model_2.state_dict()[param_tensor],
+            ):
+                if (
+                    torch.equal(tensor_1.to(device), tensor_2.to(device))
+                    is not True
                 ):
-                    if (
-                        torch.equal(tensor_1.to(device), tensor_2.to(device))
-                        is not True
-                    ):
-                        raise (
-                            ValueError(
-                                (
-                                    "local and global model differ: "
-                                    f"{collaborator_name} at round {round_num-1}."
-                                )
-                            )
-                        )
-
-                if isinstance(optimizer, optim.SGD):
-                    if optimizer.state_dict()["state"] != {}:
-                        for param_idx in optimizer.state_dict()["param_groups"][0][
-                            "params"
-                        ]:
-                            for tensor_1, tensor_2 in zip(
-                                optimizer.state_dict()["state"][param_idx][
-                                    "momentum_buffer"
-                                ],
-                                optimizer_prevround.state_dict()["state"][param_idx][
-                                    "momentum_buffer"
-                                ],
-                            ):
-                                if (
-                                    torch.equal(
-                                        tensor_1.to(device), tensor_2.to(device)
-                                    )
-                                    is not True
-                                ):
-                                    raise (
-                                        ValueError(
-                                            (
-                                                "Momentum buffer data differ: "
-                                                f"{collaborator_name} at round {round_num-1}"
-                                            )
-                                        )
-                                    )
-                    else:
-                        raise (ValueError("Current optimizer state is empty"))
-
-                model_params = [
-                    model.state_dict()[param_tensor]
-                    for param_tensor in model.state_dict()
-                ]
-                for idx, param in enumerate(optimizer.param_groups[0]["params"]):
-                    for tensor_1, tensor_2 in zip(param.data, model_params[idx]):
-                        if (
-                            torch.equal(tensor_1.to(device), tensor_2.to(device))
-                            is not True
-                        ):
-                            raise (
-                                ValueError(
-                                    (
-                                        "Model and optimizer do not point "
-                                        "to the same params for collaborator: "
-                                        f"{collaborator_name} at round {round_num-1}."
-                                    )
-                                )
-                            )
-
-    else:
-        raise (ValueError("No such name of pickle file exists"))
+                    equal = False
+    return equal
 
 
 def optimizer_to_device(optimizer, device):
@@ -254,8 +159,6 @@ class FederatedFlow(FLSpec):
     def __init__(
         self,
         model,
-        model_constructor,
-        collaborator_names,
         gandlf_config,
         device="cpu",
         total_rounds=10,
@@ -265,7 +168,6 @@ class FederatedFlow(FLSpec):
     ):
         super().__init__(**kwargs)
         self.model = model
-        self.global_model = model_constructor()
         self.total_rounds = total_rounds
         self.top_model_accuracy = top_model_accuracy
         self.device = device
@@ -292,6 +194,9 @@ class FederatedFlow(FLSpec):
     # @collaborator  # Uncomment if you want ro run on CPU
     @collaborator(num_gpus=1)  # Assuming GPU(s) is available in the machine
     def aggregated_model_validation(self):
+
+        # save off the global model before it gets trained (will audit it later)
+        self.global_model = copy.deepcopy(self.model)
 
         # Using collaborator private attributes to instantiate train, val, and test loaders
         train_loader_info = self.gandlf_config, \
@@ -348,7 +253,7 @@ class FederatedFlow(FLSpec):
         # updating gandlf config
         self.gandlf_config["model_parameters"] = model.parameters()
         optimizer = get_optimizer(self.gandlf_config)
-        self.gandlf_config["optimizer_object"] = optimizer
+        # self.gandlf_config["optimizer_object"] = optimizer
         optimizer_to_device(optimizer=optimizer, device=self.device)
         if "scheduler" in self.gandlf_config:
             if not ("step_size" in self.gandlf_config["scheduler"]):
@@ -366,7 +271,7 @@ class FederatedFlow(FLSpec):
             print(f'Run {epoch} epoch of {self.round_num} round')
             epoch_train_loss, epoch_train_metric = train_network(model=self.model,
                                                                  train_dataloader=self.train_loader_wrapper.base_loader,
-                                                                 optimizer=self.gandlf_config["optimizer_object"],
+                                                                 optimizer=optimizer,
                                                                  params=self.gandlf_config)
         train_metric_dict = {'loss': epoch_train_loss}
         for k, v in epoch_train_metric.items():
@@ -377,6 +282,10 @@ class FederatedFlow(FLSpec):
         delattr(self, 'train_loader')
     
         self.training_completed = True
+
+        # sanity check that model and global model have diverted (rather than training on one reflecting in the other)
+        if models_equal(model_1=self.model, model_2 = self.global_model):
+            raise ValueError(f"Local update and global model are equal after training, either they share memory or training was a no op!")
         
         self.next(self.local_model_validation)
 
@@ -529,9 +438,10 @@ class FederatedFlow(FLSpec):
         # for computing the signal_norm, it should be around 25.
         # Otherwise, one may get OOM depending on the GPU memory.
 
-        target_model = PytorchModelTensor(
-            copy.deepcopy(self.model), loss_function, self.device
-        )
+        target_model = GaNDLFPyTorchModel(model_obj=copy.deepcopy(self.model), 
+                                          loss_fn=loss_function, 
+                                          gandlf_config=self.gandlf_config)
+        
         self.local_pm_info = PopulationAuditor(
             target_model, datasets, self.local_pm_info
         )
@@ -541,9 +451,9 @@ class FederatedFlow(FLSpec):
         print(f"population attack for the local model uses {time.time() - start_time}")
 
         start_time = time.time()
-        target_model = PytorchModelTensor(
-            copy.deepcopy(self.global_model), loss_function, self.device
-        )
+        target_model = GaNDLFPyTorchModel(model_obj=self.global_model, 
+                                          loss_fn=loss_function, 
+                                          gandlf_config=self.gandlf_config)
         self.global_pm_info = PopulationAuditor(
             target_model, datasets, self.global_pm_info
         )
@@ -798,6 +708,9 @@ if __name__ == "__main__":
 
     # change to the internal flow loop
     model = get_model(gandlf_config)
+    
+    
+    
     top_model_accuracy = 0
 
     """
@@ -810,8 +723,6 @@ if __name__ == "__main__":
 
     flflow = FederatedFlow(
         model=model,
-        model_constructor=model_constructor, 
-        collaborator_names=collaborator_names, 
         gandlf_config=gandlf_config, 
         device=device,
         total_rounds=args.comm_round,
