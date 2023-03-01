@@ -102,6 +102,7 @@ def inference(network, test_loader, scheduler, round_num, params):
     return valid_metric_dict
 
 
+
 # TODO: make this work with GaNDLF models
 def load_previous_round_model_and_optimizer_and_perform_testing(
     model, global_model, optimizer, collaborator_name, round_num, device
@@ -255,18 +256,16 @@ class FederatedFlow(FLSpec):
         model,
         model_constructor,
         collaborator_names,
-        optimizers,
+        gandlf_config,
         device="cpu",
         total_rounds=10,
         top_model_accuracy=0,
         flow_internal_loop_test=False,
-        gandlf_config,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.model = model
         self.global_model = model_constructor()
-        self.optimizers = optimizers
         self.total_rounds = total_rounds
         self.top_model_accuracy = top_model_accuracy
         self.device = device
@@ -284,6 +283,17 @@ class FederatedFlow(FLSpec):
         self.collaborators = self.runtime.collaborators
         self.private = 10
 
+        self.next(
+            self.aggregated_model_validation,
+            foreach="collaborators",
+            exclude=["private"],
+        )
+
+    # @collaborator  # Uncomment if you want ro run on CPU
+    @collaborator(num_gpus=1)  # Assuming GPU(s) is available in the machine
+    def aggregated_model_validation(self):
+
+        # Using collaborator private attributes to instantiate train, val, and test loaders
         train_loader_info = self.gandlf_config, \
                         True, \
                         self.target_train_path, \
@@ -311,34 +321,10 @@ class FederatedFlow(FLSpec):
         self.test_loader_wrapper = GaNDLFLoaderWrapper(info=test_loader_info)
         self.gandlf_config = self.test_loader_wrapper.parameters
 
-        self.next(
-            self.aggregated_model_validation,
-            foreach="collaborators",
-            exclude=["private"],
-        )
-
-    # @collaborator  # Uncomment if you want ro run on CPU
-    @collaborator(num_gpus=1)  # Assuming GPU(s) is available in the machine
-    def aggregated_model_validation(self):
         print(f'Performing aggregated model validation for collaborator {self.input} on Device {self.device[self.input]}')
         params = self.gandlf_config   # load parameters from gandlf config
         self.model = self.model.to(self.device)
         assert next(self.model.parameters()).device == self.device
-
-        # updating gandlf config
-        params["model_parameters"] = model.parameters()
-        self.optimizer = get_optimizer(params)
-        params["optimizer_object"] = self.optimizer
-        optimizer_to_device(optimizer=self.optimizer, device=self.device)
-        if "scheduler" in params:
-            if not ("step_size" in params["scheduler"]):
-                params["scheduler"]["step_size"] = (
-                    params["training_samples_size"] / params["learning_rate"]
-                )
-            self.scheduler = get_scheduler(params)
-        else:
-            self.scheduler = None
-        params["device"] = self.device
         
         self.agg_validation_score = inference(self.model, self.val_loader_wrapper.base_loader, self.scheduler, self.round_num, params)
         self.agg_test_score = inference(self.model, self.test_loader_wrapper.base_loader, self.scheduler, self.round_num, params)
@@ -358,11 +344,29 @@ class FederatedFlow(FLSpec):
 
         self.model.train()
         epochs = self.gandlf_config["num_epochs"]
+
+        # updating gandlf config
+        self.gandlf_config["model_parameters"] = model.parameters()
+        optimizer = get_optimizer(self.gandlf_config)
+        self.gandlf_config["optimizer_object"] = optimizer
+        optimizer_to_device(optimizer=optimizer, device=self.device)
+        if "scheduler" in self.gandlf_config:
+            if not ("step_size" in self.gandlf_config["scheduler"]):
+                self.gandlf_config["scheduler"]["step_size"] = (
+                    self.gandlf_config["training_samples_size"] / self.gandlf_config["learning_rate"]
+                )
+            self.scheduler = get_scheduler(self.gandlf_config)
+        else:
+            self.scheduler = None
+        self.gandlf_config["device"] = self.device
+
+        # TODO: Is it ok we only take measurements from the last epoch?
+        
         for epoch in range(epochs):
             print(f'Run {epoch} epoch of {self.round_num} round')
             epoch_train_loss, epoch_train_metric = train_network(model=self.model,
                                                                  train_dataloader=self.train_loader_wrapper.base_loader,
-                                                                 optimizer=self.optimizer,
+                                                                 optimizer=self.gandlf_config["optimizer_object"],
                                                                  params=self.gandlf_config)
         train_metric_dict = {'loss': epoch_train_loss}
         for k, v in epoch_train_metric.items():
@@ -390,7 +394,7 @@ class FederatedFlow(FLSpec):
 
         print("Val dataset performance")
         self.local_validation_score = inference(
-            self.model, self.val_loader, self.scheduler, self.round_num, self.device
+            self.model, self.val_loader_wrapper.base_loader, self.scheduler, self.round_num, self.device
         )
         print("Train dataset performance")
         self.local_train_score_train = inference(
@@ -525,13 +529,6 @@ class FederatedFlow(FLSpec):
         # for computing the signal_norm, it should be around 25.
         # Otherwise, one may get OOM depending on the GPU memory.
 
-        #
-        # 
-        # 
-        # Get the model and loss function from GaNDLF
-        WORKING HERE
-
-
         target_model = PytorchModelTensor(
             copy.deepcopy(self.model), loss_function, self.device
         )
@@ -573,6 +570,8 @@ class FederatedFlow(FLSpec):
             pickle.dump(history_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
         print(f"auditing time: {time.time() - begin_time}")
 
+        """
+        TODO: Do we need to clean up anything here?
         # Clean up state before transitioning to collaborator
         delattr(self, "train_dataset")
         delattr(self, "train_loader")
@@ -580,27 +579,36 @@ class FederatedFlow(FLSpec):
         delattr(self, "test_loader")
         delattr(self, "population_dataset")
         self.next(self.join, exclude=["training_completed"])
+        """
 
     @aggregator
     def join(self, inputs):
         self.average_loss = sum(input.loss for input in inputs) / len(inputs)
-        self.aggregated_model_accuracy = sum(
+        self.aggregated_model_val_accuracy = sum(
             input.agg_validation_score for input in inputs
         ) / len(inputs)
-        self.local_model_accuracy = sum(
+        self.aggregated_model_test_accuracy = sum(
+            input.agg_test_score for input in inputs
+        ) / len(inputs)
+        
+        self.local_model_val_accuracy = sum(
             input.local_validation_score for input in inputs
         ) / len(inputs)
+        self.local_model_test_accuracy = sum(
+            input.local_test_score for input in inputs
+        ) / len(inputs)
         print(
-            f"Average aggregated model validation values = {self.aggregated_model_accuracy}"
+            f"Average aggregated model validation values = {self.aggregated_model_val_accuracy}"
+        )
+        print(
+            f"Average aggregated model test values = {self.aggregated_model_test_accuracy}"
         )
         print(f"Average training loss = {self.average_loss}")
-        print(f"Average local model validation values = {self.local_model_accuracy}")
+        print(f"Average local model validation values = {self.local_model_val_accuracy}")
+        print(f"Average local model test values = {self.local_model_test_accuracy}")
 
         self.model = FedAvg([input.model.cpu() for input in inputs])
         self.global_model.load_state_dict(deepcopy(self.model.state_dict()))
-        self.optimizers.update(
-            {input.collaborator_name: input.optimizer for input in inputs}
-        )
 
         del inputs
         self.next(self.check_round_completion)
@@ -608,14 +616,14 @@ class FederatedFlow(FLSpec):
     @aggregator
     def check_round_completion(self):
         if self.round_num != self.total_rounds:
-            if self.aggregated_model_accuracy > self.top_model_accuracy:
+            if self.aggregated_model_val_accuracy > self.top_model_accuracy:
                 print(
                     (
-                        "Accuracy improved to "
-                        f"{self.aggregated_model_accuracy} for round {self.round_num}"
+                        "Validation accuracy improved to "
+                        f"{self.aggregated_model_val_accuracy} for round {self.round_num}"
                     )
                 )
-                self.top_model_accuracy = self.aggregated_model_accuracy
+                self.top_model_accuracy = self.aggregated_model_val_accuracy
             self.round_num += 1
             print(20 * "#")
             print(f"Round {self.round_num}...")
@@ -654,7 +662,7 @@ if __name__ == "__main__":
         "--signals",
         nargs="*",
         type=str,
-        default=["loss", "gradient_norm"],
+        default=["loss"],
         help="Indicate which signal to use for membership inference attack",
     )
     argparser.add_argument(
@@ -774,56 +782,11 @@ if __name__ == "__main__":
     #       a function more targeted to that goal alone would be more optimal. We
     #       only  need to run this for the last collaborator's train and val paths
     # 
-    """
-    disabled for now ----   _, _, local_gandlf_config = get_loaders(train_csv_path=target_train_path, 
-                                                val_csv_path=target_val_path, 
-                                                parameters=gandlf_config)
-    """
 
-    X = np.concatenate([cifar_test.data, cifar_train.data])
-    Y = np.concatenate([cifar_test.targets, cifar_train.targets]).tolist()
-
-    train_dataset = deepcopy(cifar_train)
-    train_dataset.data = X[:train_dataset_size]
-    train_dataset.targets = Y[:train_dataset_size]
-
-    test_dataset = deepcopy(cifar_test)
-    test_dataset.data = X[train_dataset_size:train_dataset_size + test_dataset_size]
-    test_dataset.targets = Y[
-        train_dataset_size:train_dataset_size + test_dataset_size
-    ]
-
-    population_dataset = deepcopy(cifar_test)
-    population_dataset.data = X[-audit_dataset_size:]
-    population_dataset.targets = Y[-audit_dataset_size:]
-
-    print(
-        (
-            f"Dataset info (total {N_total_samples}): "
-            f"train - {len(train_dataset)}, "
-            f"test - {len(test_dataset)}, "
-            f"audit - {len(population_dataset)}"
-        )
-    )
-
-    # partition the dataset for clients
-    for idx, collab in enumerate(collaborators):
-
-        # construct the training and test and population dataset
-        local_train = deepcopy(train_dataset)
-        local_test = deepcopy(test_dataset)
-        local_population = deepcopy(population_dataset)
-
-        local_train.data = train_dataset.data[idx::len(collaborators)]
-        local_train.targets = train_dataset.targets[idx::len(collaborators)]
-
-        local_test.data = test_dataset.data[idx::len(collaborators)]
-        local_test.targets = test_dataset.targets[idx::len(collaborators)]
-
-        local_population.data = population_dataset.data[idx::len(collaborators)]
-        local_population.targets = population_dataset.targets[idx::len(collaborators)]
-
-        
+    _, _, gandlf_config = get_loaders(train_csv_path=target_train_path, 
+                                      val_csv_path=target_val_path, 
+                                      parameters=gandlf_config)
+    
 
 
 
@@ -834,20 +797,26 @@ if __name__ == "__main__":
     print(f"Local runtime collaborators = {local_runtime.collaborators}")
 
     # change to the internal flow loop
-    model = Net()
+    model = get_model(gandlf_config)
     top_model_accuracy = 0
+
+    """
+    We will for now consider reinitialization of optimizers each round
     optimizers = {
         collaborator.name: default_optimizer(model, optimizer_type=args.optimizer_type)
         for collaborator in collaborators
     }
+    """
+
     flflow = FederatedFlow(
-        model,
-        optimizers,
-        device,
-        args.comm_round,
-        top_model_accuracy,
-        args.flow_internal_loop_test,
-        gandlf_config
+        model=model,
+        model_constructor=model_constructor, 
+        collaborator_names=collaborator_names, 
+        gandlf_config=gandlf_config, 
+        device=device,
+        total_rounds=args.comm_round,
+        top_model_accuracy=top_model_accuracy,
+        flow_interval_loop_test=args.flow_internal_loop_test
     )
 
     flflow.runtime = local_runtime

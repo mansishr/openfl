@@ -7,7 +7,7 @@ from GANDLF.data import (
     get_train_loader,
     get_validation_loader,
 )
-
+from GANDLF.models import global_models_dict
 from GANDLF.utils import populate_header_in_parameters, parseTrainingCSV, populate_channel_keys_in_params, get_class_imbalance_weights
 
 def subject_to_feature(subject_dict, gandlf_config):
@@ -83,6 +83,33 @@ def get_loaders(parameters, train_csv_path=None, val_csv_path=None):
                                                 csv_path=val_csv_path)
 
     return (train_loader, val_loader, parameters)
+
+
+def get_model_info(parameters, loss_function):
+    """
+    This function gets the model class being used from the global models dict.
+    Args:
+        parameters (dict): The parameters dictionary.
+        loss_function: The loss that will be used with the model, must allow for a parameter 'reduction'
+                       for which the value indicates whether or not to return per sample loss or average over samples
+    Returns:
+        model_class (torch.nn.Module): The model to use for training.
+        loss_function_w_reduction (): The loss function used with this model (averages loss over samples)
+        loss_function_wo_reduction (): The loss function used with this model (does not average loss over samples)
+    """
+
+    # get the model class (here we use a vgg only global models dict since not using this script much, as it will 
+    # be replaced when PM code is made more modular)
+    model_class = global_models_dict[parameters["model"]["architecture"]]
+    # get the loss function
+    
+    # TODO: support more losses using the global losses dict
+    loss_function_w_reduction = loss_function()
+    loss_function_wo_reduction = loss_function(reduction='none') # partial(CEL, **{'reduction': 'none'})
+    
+    return model_class, loss_function_w_reduction, loss_function_wo_reduction  
+
+
 
 
 # Help GaNDLF loaders be treated like numpy arrays (slicing). Also, help deepcopy GaNDLF loaders (via __reduce__)
