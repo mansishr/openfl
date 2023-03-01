@@ -1,0 +1,226 @@
+import numpy as np
+
+import torch
+from torchio import DATA
+
+from GANDLF.data import (
+    get_train_loader,
+    get_validation_loader,
+)
+
+from GANDLF.utils import populate_header_in_parameters, parseTrainingCSV, populate_channel_keys_in_params, get_class_imbalance_weights
+
+def subject_to_feature(subject_dict, gandlf_config):
+    features = torch.cat([subject_dict[key][DATA] for key in gandlf_config["channel_keys"]], 
+                             dim=1).float().to(gandlf_config["device"]).squeeze(dim=-1)
+    return features
+    
+def subject_to_label(subject_dict, gandlf_config):
+    if len(subject_dict["value_0"].detach().cpu().numpy()) != 1:
+        raise ValueError("Code expects batch size of one!")
+    num_labels = len(gandlf_config['model']['class_list'])
+    int_label = int(subject_dict["value_0"].detach().cpu().numpy().item())
+    # TODO: below is a potential batch_size=1 assumption?
+    return torch.Tensor(np.eye(num_labels)[int_label]).unsqueeze(dim=0)
+   
+    
+def get_single_loader(parameters, train, csv_path):
+    """
+    This function creates a data loader.
+    Args:
+        parameters (dict): The parameters dictionary.
+        train (bool): Whether or not the loader will be used for training (augmentation, patching, ...)
+        csv_path (str): The path to the CSV file.
+    Returns:
+        loader (torch.utils.data.DataLoader): A data loader for train or val or test.
+    """
+
+    # initialize loaders
+    loader, headers = None, None
+
+    if train:
+        parameter_key = 'training_data'
+    else:
+        parameter_key = 'validation_data'
+
+    # populate the data frames for the loader
+    parameters[parameter_key], headers = parseTrainingCSV(csv_path, train=train)
+    parameters = populate_header_in_parameters(parameters, headers)
+
+    if train:
+        loader = get_train_loader(parameters)
+        parameters["training_samples_size"] = len(loader)
+        # Calculate the weights here
+        (
+            parameters["weights"],
+            parameters["class_weights"],
+        ) = get_class_imbalance_weights(parameters["training_data"], parameters)
+
+    else:
+        # get the validation loader
+        loader = get_validation_loader(parameters)
+
+    return (loader, parameters)
+    
+    
+def get_loaders(parameters, train_csv_path=None, val_csv_path=None):
+    """
+    This function creates the data loaders for each colaborator train, and test data.
+    Args:
+        parameters (dict): The parameters dictionary.
+        train_csv_path (str): The path to the train CSV file.
+        val_csv_path (str): The path to the test CSV file.
+    Returns:
+        train_loader (torch.utils.data.DataLoader): The training data loader.
+        val_loader (torch.utils.data.DataLoader): The validation data loader.
+    """
+
+    train_loader, parameters = get_single_loader(parameters=parameters,
+                                                    train=True,
+                                                    csv_path=train_csv_path)
+    val_loader, parameters = get_single_loader(parameters=parameters,
+                                                train=False,
+                                                csv_path=val_csv_path)
+
+    return (train_loader, val_loader, parameters)
+
+
+# Help GaNDLF loaders be treated like numpy arrays (slicing). Also, help deepcopy GaNDLF loaders (via __reduce__)
+class GaNDLFLoaderWrapper(object):
+    def __init__(self, info, base_loader=None):
+        """
+        TODO rewrite this documentation below-----
+        restriction (tuple of: str, np.ndarray): First component can be 'feature', 'label', or
+        'feature_and_label', array specifies which indices to allow during iteration. Note base loader
+        must be deterministic.
+        """
+        super().__init__()
+        self.info = info
+        self.parameters, \
+            self.train, \
+            self.csv_path, \
+            self.restrictions, \
+            self.subject_to_feature, \
+            self.subject_to_label = self.info
+        self.type_restrictions, self.idx_restrictions = self.restrictions
+        if self.base_loader is None:
+            self.base_loader, self.parameters = get_single_loader(parameters=self.parameters, 
+                                                 train=self.train, 
+                                                 csv_path=self.csv_path)
+        
+        # parameters may have been modified above
+        self.info = self.parameters, \
+                        self.train, \
+                        self.csv_path, \
+                        self.restrictions, \
+                        self.subject_to_feature, \
+                        self.subject_to_label
+        self.base_loader_length = len(self.base_loader)
+        
+        # some parameter handling
+        if self.idx_restrictions is None:
+            self.idx_restrictions = np.arange(len(self.base_loader))
+
+        # sanity check arguments
+        if self.type_restrictions not in ["feature", "label", "feature_and_label"]:
+            raise ValueError(
+                "The first element of the restrictions tuple must be 'feature', 'label', or 'feature_and_label'."
+            )
+        if not isinstance(self.idx_restrictions, np.ndarray):
+            raise ValueError(
+                "The second element of the restrictions tuple must be a numpy array."
+            )
+        if len(self.idx_restrictions.shape) != 1:
+            raise ValueError(
+                "The second element of the restirctions tuple must have a shape of length one."
+            )
+
+        # initialize state
+        self.base_iter = None
+        self.base_iter_idx = None
+
+    def iterate_to_next_restricted_idx_or_raise_stop(self):
+        if self.base_iter_idx is None:
+            raise ValueError("Iteration is progressing before base_iter_idx is not set.")
+        if self.base_iter is None:
+            raise ValueError("Iteration is progressing before base_iter is set.")
+        iters_to_stop = self.base_loader_length - self.base_iter_idx + 1
+        for i in range(iters_to_stop):
+            deliver_result = self.base_iter_idx in self.idx_restrictions
+            # record that we have considered this idx in state
+            self.base_iter_idx += 1
+            if i == iters_to_stop - 1:
+                # before raising StopIteration we should void state
+                self.base_iter = None
+                self.base_iter_idx = None
+                raise StopIteration
+            else:
+                iter_result = self.base_iter.__next__()
+                if deliver_result:
+                    return iter_result
+
+    def __iter__(self):
+        if self.base_iter_idx is not None:
+            raise RuntimeError(
+                f"Method: __iter__ was called on {self.__repr__()} before the previous iterator was completed."
+            )
+        # initialize
+        self.base_iter = self.base_loader.__iter__()
+        self.base_iter_idx = 0
+        return self
+
+    def __next__(self):
+        if (self.base_iter is None) or (self.base_iter_idx == None):
+            raise ValueError(
+                "Cannot call next on LoaderRestrictor before calling iter on it."
+            )
+
+        iter_result = self.iterate_to_next_restricted_idx_or_raise_stop()
+        feature = None
+        label = None
+        if self.subject_to_feature is not None:
+            feature = self.subject_to_feature(subject_dict=iter_result)
+        if self.subject_to_label is not None:
+            label = self.subject_to_label(subject_dict=iter_result)
+
+        if self.type_restrictions == "feature":
+            iter_result = feature
+        elif self.type_restrictions == "label":
+            iter_result = label
+
+        return iter_result
+
+    def set_idx_restrictions(self, idx_restrictions):
+        if not np.all(np.array(idx_restrictions) >= 0):
+            raise ValueError(
+                "Cannot set idx_restrictions to an array containing negative indices."
+            )
+        elif np.amax(idx_restrictions) > len(self.base_loader):
+            raise ValueError(
+                "Trying to set idx_restrictions with indices that exceed tha maximum range."
+            )
+        else:
+            self.idx_restrictions = idx_restrictions
+
+    def copy(self):
+        info = self.parameters, \
+                        self.train, \
+                        self.csv_path, \
+                        self.restrictions, \
+                        self.subject_to_feature, \
+                        self.subject_to_label 
+        return GaNDLFLoaderWrapper(info=info, base_loader=self.base_loader)
+
+    def __len__(self):
+        return len(self.idx_restrictions)
+
+    def __getitem__(self, indices):
+        temp = self.copy()
+        temp.idx_restrictions = temp.idx_restrictions[indices]
+        return temp
+    # TODO: Maybe we don't need this?
+    def __reduce__(self):
+        unpack = GaNDLFLoaderWrapper
+        packaged_info = self.info
+        return unpack, packaged_info
+
