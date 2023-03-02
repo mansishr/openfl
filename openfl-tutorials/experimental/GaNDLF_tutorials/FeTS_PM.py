@@ -313,17 +313,23 @@ class FederatedFlow(FLSpec):
         start_time = time.time()
 
         print("Val dataset performance")
-        self.local_validation_score = inference(
-            self.model, self.val_loader_wrapper.base_loader, self.scheduler, self.round_num, self.device
-        )
+        self.local_validation_score = inference(network=self.model, 
+                                                test_loader=self.val_loader_wrapper.base_loader, 
+                                                scheduler=self.scheduler, 
+                                                round_num=self.round_num, 
+                                                params=self.gandlf_config)
         print("Train dataset performance")
-        self.local_train_score_train = inference(
-            self.model, self.train_loader_wrapper.base_loader, self.scheduler, self.round_num, self.device
-        )
+        self.local_train_score_train = inference(network=self.model, 
+                                                 test_loader=self.train_loader_wrapper.base_loader, 
+                                                 scheduler=self.scheduler, 
+                                                 round_num=self.round_num, 
+                                                 params=self.gandlf_config)
         print("Test dataset performance")
-        self.local_test_score_train = inference(
-            self.model, self.test_loader_wrapper.base_loader, self.scheduler, self.round_num, self.device
-        )
+        self.local_test_score_train = inference(network=self.model, 
+                                                test_loader=self.test_loader_wrapper.base_loader, 
+                                                scheduler=self.scheduler, 
+                                                round_num=self.round_num, 
+                                                params=self.gandlf_config)
 
         # remove val and test loader attributes
         delattr(self, 'val_loader_wrapper')
