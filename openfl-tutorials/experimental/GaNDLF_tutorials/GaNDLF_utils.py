@@ -19,7 +19,7 @@ def subject_to_feature(subject_dict, gandlf_config):
     return features
     
 def subject_to_label(subject_dict, gandlf_config):
-    if len(subject_dict["value_0"].detach().cpu().numpy()) != 1:
+    if len(subject_dict["label"].detach().cpu().numpy()) != 1:
         raise ValueError("Code expects batch size of one!")
     num_labels = len(gandlf_config['model']['class_list'])
     int_label = int(subject_dict["value_0"].detach().cpu().numpy().item())

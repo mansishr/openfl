@@ -398,14 +398,11 @@ class FederatedFlow(FLSpec):
         
         # grouping is not going to happen since we are segmenting
         train_dataset = {'x': x_train,
-                        'y': y_train, 
-                        'g': y_train}
+                        'y': y_train}
         test_dataset = {'x':  x_test,
-                        'y': y_test, 
-                        'g': y_test}
+                        'y': y_test}
         pop_dataset = {'x': x_pop, 
-                    'y': y_pop, 
-                    'g': y_pop}
+                    'y': y_pop}
 
         # now construct the dataset dict
         datasets = {
