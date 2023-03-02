@@ -102,7 +102,7 @@ def inference(network, test_loader, scheduler, round_num, params):
     return valid_metric_dict
 
 
-def models_equal(model_1, model_2, version_key):
+def models_equal(model_1, model_2):
     equal = True
     for param_tensor in model_1.state_dict():
             for tensor_1, tensor_2 in zip(
@@ -278,13 +278,13 @@ class FederatedFlow(FLSpec):
         self.local_train_score = train_metric_dict
         print(f'{self.input} value of {self.local_train_score}')
 
-        delattr(self, 'train_loader')
+        delattr(self, 'train_loader_wrapper')
     
         self.training_completed = True
 
         # sanity check that model and global model have diverted (rather than training on one reflecting in the other)
         if models_equal(model_1=self.model, model_2 = self.global_model):
-            raise ValueError(f"Local update and global model are equal after training, either they share memory or training was a no op!")
+            raise ValueError(f"Local update and global model are equal after training in round {self.round_num}, either they share memory or training was a no op!")
         
         self.next(self.local_model_validation)
 
@@ -314,8 +314,8 @@ class FederatedFlow(FLSpec):
         )
 
         # remove val and test loader attributes
-        delattr(self, 'val_loader')
-        delattr(self, 'test_loader')
+        delattr(self, 'val_loader_wrapper')
+        delattr(self, 'test_loader_wrapper')
 
         print(
             (
@@ -610,7 +610,7 @@ if __name__ == "__main__":
     aggregator.private_attributes = {}
 
     # Setup collaborators with private attributes
-    collaborator_names = [str(n) for n in range(1,4)]
+    collaborator_names = [str(n) for n in range(1,3)]
     collaborators = [Collaborator(name=name) for name in collaborator_names]
     
     if torch.cuda.is_available():
