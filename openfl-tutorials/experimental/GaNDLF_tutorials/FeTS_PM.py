@@ -200,7 +200,7 @@ class FederatedFlow(FLSpec):
         train_loader_info = self.gandlf_config, \
                         True, \
                         self.target_train_path, \
-                        ('features_and_label', None), \
+                        ('feature_and_label', None), \
                         subject_to_feature, \
                         subject_to_label 
         self.train_loader_wrapper = GaNDLFLoaderWrapper(info=train_loader_info)
@@ -209,7 +209,7 @@ class FederatedFlow(FLSpec):
         val_loader_info = self.gandlf_config, \
                         False, \
                         self.target_val_path, \
-                        ('features_and_label', None), \
+                        ('feature_and_label', None), \
                         subject_to_feature, \
                         subject_to_label 
         self.val_loader_wrapper = GaNDLFLoaderWrapper(info=val_loader_info)
@@ -218,7 +218,7 @@ class FederatedFlow(FLSpec):
         test_loader_info = self.gandlf_config, \
                         False, \
                         self.target_test_path, \
-                        ('features_and_label', None), \
+                        ('feature_and_label', None), \
                         subject_to_feature, \
                         subject_to_label 
         self.test_loader_wrapper = GaNDLFLoaderWrapper(info=test_loader_info)
@@ -349,13 +349,13 @@ class FederatedFlow(FLSpec):
         
         x_loader_info_common = [self.gandlf_config, \
                                 False, \
-                                ('features'), None, \
+                                ('feature'), None, \
                                 subject_to_feature, \
                                 subject_to_label]
         
         y_loader_info_common = [self.gandlf_config, \
                                 False, \
-                                ('labels'), None, \
+                                ('label'), None, \
                                 subject_to_feature, \
                                 subject_to_label]
 

@@ -126,6 +126,7 @@ class GaNDLFLoaderWrapper(object):
         """
         super().__init__()
         self.info = info
+        self.base_loader = base_loader
         self.parameters, \
             self.train, \
             self.csv_path, \
