@@ -49,7 +49,6 @@ from GANDLF.optimizers import get_optimizer
 from GANDLF.losses.segmentation import MCD
 
 from GaNDLF_utils import get_loaders, GaNDLFLoaderWrapper, subject_to_feature, subject_to_label, GaNDLFPyTorchModel
-
 warnings.filterwarnings("ignore")
 
 # set the random seed for repeatable results
@@ -207,8 +206,8 @@ class FederatedFlow(FLSpec):
                         True, \
                         self.target_train_path, \
                         ('feature_and_label', None), \
-                        subject_to_feature, \
-                        subject_to_label 
+                        functools.partial(subject_to_feature, **{'gandlf_config': self.gandlf_config}), \
+                        functools.partial(subject_to_label, **{'gandlf_config': self.gandlf_config}) 
         self.train_loader_wrapper = GaNDLFLoaderWrapper(info=train_loader_info)
         self.gandlf_config = self.train_loader_wrapper.parameters
 
@@ -216,8 +215,8 @@ class FederatedFlow(FLSpec):
                         False, \
                         self.target_val_path, \
                         ('feature_and_label', None), \
-                        subject_to_feature, \
-                        subject_to_label 
+                        functools.partial(subject_to_feature, **{'gandlf_config': self.gandlf_config}), \
+                        functools.partial(subject_to_label, **{'gandlf_config': self.gandlf_config}) 
         self.val_loader_wrapper = GaNDLFLoaderWrapper(info=val_loader_info)
         self.gandlf_config = self.val_loader_wrapper.parameters
 
@@ -225,8 +224,8 @@ class FederatedFlow(FLSpec):
                         False, \
                         self.target_test_path, \
                         ('feature_and_label', None), \
-                        subject_to_feature, \
-                        subject_to_label 
+                        functools.partial(subject_to_feature, **{'gandlf_config': self.gandlf_config}), \
+                        functools.partial(subject_to_label, **{'gandlf_config': self.gandlf_config}) 
         self.test_loader_wrapper = GaNDLFLoaderWrapper(info=test_loader_info)
         self.gandlf_config = self.test_loader_wrapper.parameters
 
@@ -246,8 +245,8 @@ class FederatedFlow(FLSpec):
                                         params=params)
         self.params = params
 
-        print(f'\n{self.input} validation score was: {self.agg_validation_score}')
-        print(f'{self.input} test_score was: {self.agg_test_score}\n')
+        print(f'\n{self.input} global model validation score was: {self.agg_validation_score}')
+        print(f'{self.input} global model test_score was: {self.agg_test_score}\n')
         self.next(self.train)
 
     # @collaborator  # Uncomment if you want ro run on CPU
@@ -318,14 +317,8 @@ class FederatedFlow(FLSpec):
                                                 scheduler=self.scheduler, 
                                                 round_num=self.round_num, 
                                                 params=self.gandlf_config)
-        print("Train dataset performance")
-        self.local_train_score_train = inference(network=self.model, 
-                                                 test_loader=self.train_loader_wrapper.base_loader, 
-                                                 scheduler=self.scheduler, 
-                                                 round_num=self.round_num, 
-                                                 params=self.gandlf_config)
         print("Test dataset performance")
-        self.local_test_score_train = inference(network=self.model, 
+        self.local_test_score = inference(network=self.model, 
                                                 test_loader=self.test_loader_wrapper.base_loader, 
                                                 scheduler=self.scheduler, 
                                                 round_num=self.round_num, 
@@ -338,7 +331,8 @@ class FederatedFlow(FLSpec):
         print(
             (
                 "Doing local model validation for collaborator: "
-                f"{self.input}: {self.local_validation_score}"
+                f"{self.input} validation: {self.local_validation_score}"
+                f"{self.input} test: {self.local_test_score}"
             )
         )
         print(f"local validation time cost {(time.time() - start_time)}")
@@ -368,15 +362,15 @@ class FederatedFlow(FLSpec):
         
         x_loader_info_common = [self.gandlf_config, \
                                 False, \
-                                ('feature'), None, \
-                                subject_to_feature, \
-                                subject_to_label]
+                                ('feature', None), \
+                                functools.partial(subject_to_feature, **{'gandlf_config': self.gandlf_config}), \
+                                functools.partial(subject_to_label, **{'gandlf_config': self.gandlf_config})]
         
         y_loader_info_common = [self.gandlf_config, \
                                 False, \
-                                ('label'), None, \
-                                subject_to_feature, \
-                                subject_to_label]
+                                ('label', None), \
+                                functools.partial(subject_to_feature, **{'gandlf_config': self.gandlf_config}), \
+                                functools.partial(subject_to_label, **{'gandlf_config': self.gandlf_config})]
 
        
         x_train_info = tuple(x_loader_info_common[:2] + [self.PM_train_path] + x_loader_info_common[2:])
@@ -415,14 +409,22 @@ class FederatedFlow(FLSpec):
 
         # now construct the dataset dict
         datasets = {
-                    'train': train_dataset,
-                    'test': test_dataset,
-                    'audit': pop_dataset
+                    'train': Dataset(data_dict=train_dataset, 
+                                     default_input='x', 
+                                     default_output='y'),
+                    'test': Dataset(data_dict=test_dataset,
+                                    default_input='x', 
+                                    default_output='y'),
+                    'audit': Dataset(data_dict=pop_dataset,
+                                     default_input='x', 
+                                     default_output='y')
                     }
 
+        """
         datasets = Dataset(data_dict=datasets,
                            default_input='x',
                            default_output='y')
+        """
 
         """
         This is what was used here previously-----
