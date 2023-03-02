@@ -64,16 +64,15 @@ class PM_report:  # NOQA: N801
         self.history[attr].append(info)
 
 
-def PopulationAuditor(target_model, datasets, pm_info):  # NOQA: N802
+def PopulationAuditor(target_model, target_dataset, pm_population_dataset, pm_info):  # NOQA: N802
     """
     Function that returns updated privacy risk report based on the current
     snapshot of the model and FL history and updates the PM history.
 
     Args:
         target_model (PM model obj): The current snapshot of the model
-        datasets (dict): Dataset dictionary, which contains members dataset and i
-                         non-members dataset, as well as the dataset for auditing.
-                         Each dataset is the PM dataset obj
+        target_dataset (privacy_meter.dataset.Dataset): Contains member and non-member data.
+        pm_population_dataset (privacy_meter.dataset.Dataset): Contains the data for auditing.
         pm_info (PM_report obj): Dictionary that contains the history
                                  of the privacy loss report
     Returns:
@@ -81,44 +80,6 @@ def PopulationAuditor(target_model, datasets, pm_info):  # NOQA: N802
     """
 
     begin_time = time.time()
-
-    train_dataset = datasets["train"]
-    test_dataset = datasets["test"]
-    population_dataset = datasets["audit"]
-
-    # prepare for the dataset
-    if torch.is_tensor(train_dataset.data):
-        train_ds = {"x": train_dataset.data, "y": train_dataset.targets}
-        test_ds = {"x": test_dataset.data, "y": test_dataset.targets}
-        population_ds = {"x": population_dataset.data, "y": population_dataset.targets}
-    else:
-        train_ds = {
-            "x": torch.from_numpy(train_dataset.data).float(),
-            "y": torch.tensor(train_dataset.targets),
-        }
-        test_ds = {
-            "x": torch.from_numpy(test_dataset.data).float(),
-            "y": torch.tensor(test_dataset.targets),
-        }
-        population_ds = {
-            "x": torch.from_numpy(population_dataset.data).float(),
-            "y": torch.tensor(population_dataset.targets),
-        }
-
-    target_dataset = Dataset(
-        data_dict={"train": train_ds, "test": test_ds},
-        default_input="x",
-        default_output="y",
-        default_group="y",
-    )
-
-    # create the reference dataset
-    pm_population_dataset = Dataset(
-        data_dict={"train": population_ds},
-        default_input="x",
-        default_output="y",
-        default_group="y",
-    )
 
     target_info_source = InformationSource(
         models=[target_model], datasets=[target_dataset]

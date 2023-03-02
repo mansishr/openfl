@@ -15,16 +15,12 @@ from privacy_meter.model import PytorchModel
 
 def subject_to_feature(subject_dict, gandlf_config):
     features = torch.cat([subject_dict[key][DATA] for key in gandlf_config["channel_keys"]], 
-                             dim=1).float().to(gandlf_config["device"]).squeeze(dim=-1)
+                             dim=1).float().to(gandlf_config["device"])
     return features
     
 def subject_to_label(subject_dict, gandlf_config):
-    if len(subject_dict["label"].detach().cpu().numpy()) != 1:
-        raise ValueError("Code expects batch size of one!")
-    num_labels = len(gandlf_config['model']['class_list'])
-    int_label = int(subject_dict["value_0"].detach().cpu().numpy().item())
-    # TODO: below is a potential batch_size=1 assumption?
-    return torch.Tensor(np.eye(num_labels)[int_label]).unsqueeze(dim=0)
+    print(f"Shape of label is: ")
+    return subject_dict["label"]["data"].float().to(gandlf_config["device"])
    
     
 def get_single_loader(parameters, train, csv_path):
@@ -117,37 +113,74 @@ def get_model_info(parameters, loss_function):
 
 # Help GaNDLF loaders be treated like numpy arrays (slicing). Also, help deepcopy GaNDLF loaders (via __reduce__)
 class GaNDLFLoaderWrapper(object):
-    def __init__(self, info, base_loader=None):
+    def __init__(self, 
+                 parameters, 
+                 train, 
+                 csv_path, 
+                 type_restrictions,
+                 idx_restrictions, 
+                 subject_to_feature, 
+                 subject_to_label, 
+                 base_loader=None):
         """
         TODO rewrite this documentation below-----
         restriction (tuple of: str, np.ndarray): First component can be 'feature', 'label', or
         'feature_and_label', array specifies which indices to allow during iteration. Note base loader
-        must be deterministic.
+        must be deterministic. We insert a test for tjis determinism.
         """
         super().__init__()
-        self.info = info
+            
+        self.parameters = parameters
+        self.train = train
+        self.csv_path = csv_path
+        self.type_restrictions = type_restrictions
+        self.idx_restrictions = idx_restrictions
+        self.subject_to_feature = subject_to_feature
+        self.subject_to_label = subject_to_label
+        self.type_restrictions = type_restrictions 
+        self.idx_restrictions = idx_restrictions
         self.base_loader = base_loader
-        self.parameters, \
-            self.train, \
-            self.csv_path, \
-            self.restrictions, \
-            self.subject_to_feature, \
-            self.subject_to_label = self.info
-        self.type_restrictions, self.idx_restrictions = self.restrictions
+        
         if self.base_loader is None:
             self.base_loader, self.parameters = get_single_loader(parameters=self.parameters, 
                                                  train=self.train, 
                                                  csv_path=self.csv_path)
-        
-        # parameters may have been modified above
-        self.info = self.parameters, \
-                        self.train, \
-                        self.csv_path, \
-                        self.restrictions, \
-                        self.subject_to_feature, \
-                        self.subject_to_label
-        self.base_loader_length = len(self.base_loader)
-        
+            
+        # Try to catch the base loader breaking the assumption of determinism
+        # (this check is specific to BraTS) - only checks 1st channel so possible to not catch
+        chnl1_tensors = []
+        subject_ids = []
+
+        num_attempts = 3
+        num_subjects = 5
+
+        all_equal = True
+
+        for a_idx, attempt in enumerate(range(num_attempts+1)):
+            if a_idx == 0:
+                for s_idx, subject in enumerate(self.base_loader):
+                    if s_idx == num_subjects:
+                        break
+                    else:
+                        chnl1_tensors.append(subject['1']['data'])
+                        subject_ids.append(subject['subject_id'])
+            else:
+                print(f"Comparing one run of base loader with another...attempt={a_idx+1}")
+                equal = True
+                for s_idx, subject in enumerate(self.base_loader):
+                    if s_idx == num_subjects:
+                        break
+                    else:
+                        if not torch.equal(chnl1_tensors[s_idx], subject['1']['data']) or subject_ids[s_idx] != subject['subject_id']:
+                            equal = False
+                if not equal: 
+                    all_equal = False
+        if not all_equal:
+            raise ValueError(f"Base GaNDLF loader is not deterministic and so loader wrapper will not work!")
+        else:
+            print(f"Base loader sent to GaNDLFLoaderWrapper appeared to be deterministic when tested against {num_attempts} attempts and checking only channel 1 of features.")        
+
+        self.base_loader_length = len(self.base_loader)       
         # some parameter handling
         if self.idx_restrictions is None:
             self.idx_restrictions = np.arange(len(self.base_loader))
@@ -234,13 +267,14 @@ class GaNDLFLoaderWrapper(object):
             self.idx_restrictions = idx_restrictions
 
     def copy(self):
-        info = self.parameters, \
-                        self.train, \
-                        self.csv_path, \
-                        self.restrictions, \
-                        self.subject_to_feature, \
-                        self.subject_to_label 
-        return GaNDLFLoaderWrapper(info=info, base_loader=self.base_loader)
+        return GaNDLFLoaderWrapper(parameters = self.parameters,
+                                   train = self.train,
+                                   csv_path = self.csv_path,
+                                   type_restrictions = self.type_restrictions,
+                                   idx_restrictions = self.idx_restrictions,
+                                   subject_to_feature = self.subject_to_feature,
+                                   subject_to_label = self.subject_to_label
+                                   base_loader = self.base_loader)
 
     def __len__(self):
         return len(self.idx_restrictions)
@@ -251,8 +285,15 @@ class GaNDLFLoaderWrapper(object):
         return temp
     # TODO: Maybe we don't need this?
     def __reduce__(self):
-        unpack = GaNDLFLoaderWrapper
-        packaged_info = self.info
+        unpack = lambda info: GaNDLFLoaderWrapper(**info)
+        packaged_info = {'parameters' : self.parameters,
+                           'train' : self.train,
+                           'csv_path' : self.csv_path,
+                           'type_restrictions' : self.type_restrictions,
+                           'idx_restrictions' : self.idx_restrictions,
+                           'subject_to_feature' : self.subject_to_feature,
+                           'subject_to_label' : self.subject_to_label,
+                           'base_loader' : self.base_loader}
         return unpack, packaged_info
 
 

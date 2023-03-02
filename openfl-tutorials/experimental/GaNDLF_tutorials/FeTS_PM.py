@@ -405,17 +405,13 @@ class FederatedFlow(FLSpec):
                     'y': y_pop}
 
         # now construct the dataset dict
-        datasets = {
-                    'train': Dataset(data_dict=train_dataset, 
-                                     default_input='x', 
-                                     default_output='y'),
-                    'test': Dataset(data_dict=test_dataset,
-                                    default_input='x', 
-                                    default_output='y'),
-                    'audit': Dataset(data_dict=pop_dataset,
-                                     default_input='x', 
-                                     default_output='y')
-                    }
+        target_dataset = Dataset(data_dict={'train': {'x': x_train, 'y': y_train}, 
+                                            'test': {'x': x_test, 'y': y_test}}, 
+                                 default_input='x', 
+                                default_output='y')
+        pm_population_dataset = Dataset(data_dict={'train': pop_dataset}, 
+                                        default_input='x', 
+                                        default_output='y')
 
         """
         datasets = Dataset(data_dict=datasets,
@@ -443,7 +439,7 @@ class FederatedFlow(FLSpec):
                                           gandlf_config=self.gandlf_config)
         
         self.local_pm_info = PopulationAuditor(
-            target_model, datasets, self.local_pm_info
+            target_model, target_dataset, pm_population_dataset, self.local_pm_info
         )
         target_model.model_obj.to("cpu")
         self.local_pm_info.update_history("round", self.round_num)
