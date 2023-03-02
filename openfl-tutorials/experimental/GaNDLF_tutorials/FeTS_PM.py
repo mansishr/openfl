@@ -105,15 +105,19 @@ def inference(network, test_loader, scheduler, round_num, params):
 def models_equal(model_1, model_2):
     equal = True
     for param_tensor in model_1.state_dict():
-            for tensor_1, tensor_2 in zip(
-                model_1.state_dict()[param_tensor],
-                model_2.state_dict()[param_tensor],
-            ):
-                if (
-                    torch.equal(tensor_1.to(device), tensor_2.to(device))
-                    is not True
+            if len(model_1.state_dict()[param_tensor].shape) == 0: 
+               if model_1.state_dict()[param_tensor].item() != model_2.state_dict()[param_tensor].item():
+                   equal = False 
+            else:
+                for tensor_1, tensor_2 in zip(
+                    model_1.state_dict()[param_tensor],
+                    model_2.state_dict()[param_tensor],
                 ):
-                    equal = False
+                    if (
+                        torch.equal(tensor_1.to(device), tensor_2.to(device))
+                        is not True
+                    ):
+                        equal = False
     return equal
 
 
@@ -263,6 +267,14 @@ class FederatedFlow(FLSpec):
         optimizer_to_device(optimizer=optimizer, device=self.device)
         if "optimizer_object" not in self.gandlf_config:
             self.gandlf_config["optimizer_object"] = optimizer
+        if "scheduler" in self.gandlf_config:
+            if not ("step_size" in self.gandlf_config["scheduler"]):
+                self.gandlf_config["scheduler"]["step_size"] = (
+                    self.gandlf_config["training_samples_size"] / self.gandlf_config["learning_rate"]
+                )
+            self.scheduler = get_scheduler(self.gandlf_config)
+        else:
+            self.scheduler = None
         
 
         # TODO: Is it ok we only take measurements from the last epoch?       
