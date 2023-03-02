@@ -163,7 +163,6 @@ class FederatedFlow(FLSpec):
         device="cpu",
         total_rounds=10,
         top_model_accuracy=0,
-        flow_internal_loop_test=False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -171,7 +170,6 @@ class FederatedFlow(FLSpec):
         self.total_rounds = total_rounds
         self.top_model_accuracy = top_model_accuracy
         self.device = device
-        self.flow_internal_loop_test = flow_internal_loop_test
         self.round_num = 0  # starting round
         self.gandlf_config=gandlf_config
         print(20 * "#")
@@ -202,7 +200,7 @@ class FederatedFlow(FLSpec):
         train_loader_info = self.gandlf_config, \
                         True, \
                         self.target_train_path, \
-                        'features_and_label', \
+                        ('features_and_label', None), \
                         subject_to_feature, \
                         subject_to_label 
         self.train_loader_wrapper = GaNDLFLoaderWrapper(info=train_loader_info)
@@ -211,7 +209,7 @@ class FederatedFlow(FLSpec):
         val_loader_info = self.gandlf_config, \
                         False, \
                         self.target_val_path, \
-                        'features_and_label', \
+                        ('features_and_label', None), \
                         subject_to_feature, \
                         subject_to_label 
         self.val_loader_wrapper = GaNDLFLoaderWrapper(info=val_loader_info)
@@ -220,7 +218,7 @@ class FederatedFlow(FLSpec):
         test_loader_info = self.gandlf_config, \
                         False, \
                         self.target_test_path, \
-                        'features_and_label', \
+                        ('features_and_label', None), \
                         subject_to_feature, \
                         subject_to_label 
         self.test_loader_wrapper = GaNDLFLoaderWrapper(info=test_loader_info)
@@ -346,22 +344,6 @@ class FederatedFlow(FLSpec):
             )
         )
         begin_time = time.time()
-
-        loader_info_common = [self.gandlf_config, \
-                        False, \
-                        'features_and_labels', \
-                        subject_to_feature, \
-                        subject_to_label]
-        
-        PM_train_loader_info = tuple(loader_info_common[:2] + [self.PM_train_path] + loader_info_common[2:]) 
-        self.PM_train_loader_wrapper = GaNDLFLoaderWrapper(info=PM_train_loader_info)
-            
-        
-        PM_test_loader_info = tuple(loader_info_common[:2] + [self.PM_test_path] + loader_info_common[2:]) 
-        self.PM_test_loader_wrapper = GaNDLFLoaderWrapper(info=PM_test_loader_info)
-
-        PM_pop_loader_info = tuple(loader_info_common[:2] + [self.PM_pop_path] + loader_info_common[2:]) 
-        self.PM_pop_loader_wrapper = GaNDLFLoaderWrapper(info=PM_pop_loader_info)
 
         # Note: The train boolean here is False for all since none of these are used for training
         
@@ -727,7 +709,6 @@ if __name__ == "__main__":
         device=device,
         total_rounds=args.comm_round,
         top_model_accuracy=top_model_accuracy,
-        flow_interval_loop_test=args.flow_internal_loop_test
     )
 
     flflow.runtime = local_runtime
