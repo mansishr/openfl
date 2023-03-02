@@ -172,6 +172,8 @@ class FederatedFlow(FLSpec):
         self.device = device
         self.round_num = 0  # starting round
         self.gandlf_config=gandlf_config
+        self.gandlf_config["device"] = self.device
+
         print(20 * "#")
         print(f"Round {self.round_num}...")
         print(20 * "#")
@@ -224,13 +226,20 @@ class FederatedFlow(FLSpec):
         self.test_loader_wrapper = GaNDLFLoaderWrapper(info=test_loader_info)
         self.gandlf_config = self.test_loader_wrapper.parameters
 
-        print(f'Performing aggregated model validation for collaborator {self.input} on Device {self.device[self.input]}')
+        print(f'Performing aggregated model validation for collaborator {self.input} on Device {self.device}')
         params = self.gandlf_config   # load parameters from gandlf config
         self.model = self.model.to(self.device)
         assert next(self.model.parameters()).device == self.device
-        
-        self.agg_validation_score = inference(self.model, self.val_loader_wrapper.base_loader, self.scheduler, self.round_num, params)
-        self.agg_test_score = inference(self.model, self.test_loader_wrapper.base_loader, self.scheduler, self.round_num, params)
+        self.agg_validation_score = inference(network=self.model, 
+                                              test_loader=self.val_loader_wrapper.base_loader, 
+                                              scheduler=None, 
+                                              round_num=self.round_num, 
+                                              params=params)
+        self.agg_test_score = inference(network=self.model, 
+                                        test_loader=self.test_loader_wrapper.base_loader, 
+                                        scheduler=None, 
+                                        round_num=self.round_num, 
+                                        params=params)
         self.params = params
 
         print(f'\n{self.input} validation score was: {self.agg_validation_score}')
@@ -251,20 +260,12 @@ class FederatedFlow(FLSpec):
         # updating gandlf config
         self.gandlf_config["model_parameters"] = model.parameters()
         optimizer = get_optimizer(self.gandlf_config)
-        # self.gandlf_config["optimizer_object"] = optimizer
         optimizer_to_device(optimizer=optimizer, device=self.device)
-        if "scheduler" in self.gandlf_config:
-            if not ("step_size" in self.gandlf_config["scheduler"]):
-                self.gandlf_config["scheduler"]["step_size"] = (
-                    self.gandlf_config["training_samples_size"] / self.gandlf_config["learning_rate"]
-                )
-            self.scheduler = get_scheduler(self.gandlf_config)
-        else:
-            self.scheduler = None
-        self.gandlf_config["device"] = self.device
-
-        # TODO: Is it ok we only take measurements from the last epoch?
+        if "optimizer_object" not in self.gandlf_config:
+            self.gandlf_config["optimizer_object"] = optimizer
         
+
+        # TODO: Is it ok we only take measurements from the last epoch?       
         for epoch in range(epochs):
             print(f'Run {epoch} epoch of {self.round_num} round')
             epoch_train_loss, epoch_train_metric = train_network(model=self.model,
@@ -662,6 +663,7 @@ if __name__ == "__main__":
             "global_pm_info": global_pm_info,
             "target_train_path": target_train_path,
             "target_val_path": target_val_path,
+            "target_test_path": target_test_path,
             "PM_train_path": PM_train_path, 
             "PM_test_path": PM_test_path,
             "PM_pop_path": PM_pop_path
