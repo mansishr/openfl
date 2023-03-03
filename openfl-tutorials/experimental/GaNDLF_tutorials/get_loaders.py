@@ -1,6 +1,6 @@
 from torch.utils.data import DataLoader
 
-from .modified_images_from_data_frame import ImagesFromDataFrame
+from modified_images_from_data_frame import ImagesFromDataFrame
 from GANDLF.utils.write_parse import get_dataframe
 from GANDLF.utils import populate_channel_keys_in_params
 

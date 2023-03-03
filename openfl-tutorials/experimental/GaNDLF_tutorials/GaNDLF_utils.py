@@ -9,6 +9,8 @@ from GANDLF.utils import populate_header_in_parameters, parseTrainingCSV, popula
 
 from privacy_meter.model import PytorchModel
 
+from get_loaders import get_train_loader, get_validation_loader
+
 
 def subject_to_feature(subject_dict, gandlf_config):
     features = torch.cat([subject_dict[key][DATA] for key in gandlf_config["channel_keys"]], 
@@ -310,6 +312,7 @@ class GaNDLFPyTorchModel(PytorchModel):
     """
     Inherits from the PyTorchModel class, an interface to query a model without any assumption on how it is implemented.
     This particular class is to be used with pytorch models.
+
     """
 
     def __init__(self, model_obj, loss_fn, gandlf_config):
@@ -325,40 +328,14 @@ class GaNDLFPyTorchModel(PytorchModel):
         # Initializes the parent model
         super().__init__(model_obj, loss_fn)
 
+        self.model_obj = model_obj
+        self.loss_fn = loss_fn
         self.gandlf_config = gandlf_config
-
-    def concatenated_logits(self, restricted_feature_loader):
-        """Function to get the model output from restricted inputs.
-        Args:
-            restricted_feature_loader(GaNDLFLoaderWrapper): Wrapper for GaNDLF feature loader allowing slicing
-        Returns:
-            The concatenation of torch tensor model outputs over batches served up by the restricted feature loader.
-        """
-        with torch.no_grad():
-            per_batch_logits = []
-            for feature_batch in restricted_feature_loader:
-                per_batch_logits.append(self.model_obj(feature_batch).to("cpu"))
-            logits = torch.cat(per_batch_logits, dim=0)
-        return logits
-
-    def concatenated_labels(self, restricted_label_loader):
-        """Function to get the concatenation of torch tensor batch labels.
-        Args:
-            restricted_loader (GaNDLFLoaderWrapper): Model input.
-        Returns:
-            The concatenation of torch tensor batch labels.
-        """
-        per_batch_labels = []
-        for label_batch in restricted_label_loader:
-            per_batch_labels.append(label_batch.to("cpu"))
-        labels = torch.cat(per_batch_labels, dim=0)
-        return labels
 
     def get_logits(self, restricted_feature_loader):
         """Alias of concatenated_outputs.
         """
-    
-        return self.concatenated_logits(restricted_feature_loader)
+        raise NotImplementedError(f"get_logits not implemented for this segmentation model")
 
     def get_loss(self, restricted_feature_loader, restricted_label_loader, per_point=True):
         """Function to get the model loss on a given input and an expected output.
@@ -368,13 +345,29 @@ class GaNDLFPyTorchModel(PytorchModel):
             per_point: Boolean indicating if loss should be returned per point or reduced.
         Returns:
             The loss value, as defined by the loss_fn attribute.
+
+        NOTE: Here we rely on the data loaders to have batch size of 1.
         """
-        logits = self.concatenated_logits(restricted_feature_loader)
-        labels = self.concatenated_labels(restricted_label_loader)
+
+        # validate that loaders being used have batch size of 1
+        for idx, (features, labels) in enumerate(zip(restricted_feature_loader, restricted_label_loader)):
+            if idx == 0:
+                if features.shape[0] != 1:
+                    raise ValueError(f"feature batch is not 1 (requirement not met in wrapped_model.get_loss)!")
+            elif labels.shape[0] != 1:
+                raise ValueError(f"label batch is not 1 (requirement not met in wrapped_model.get_loss)!")
+            break
+
+        losses = []
+
+        for features, labels in zip(restricted_feature_loader, restricted_label_loader):
+            prediction = self.model_obj(features)
+            losses.append(self.loss_fn(pm=prediction, gt=labels))
+
         if per_point:
-            return self.loss_fn_no_reduction(logits,labels).detach().numpy()
+            return torch.cat(losses, dim=0).detach().numpy()
         else:
-            return self.loss_fn(logits, labels).item()
+            return torch.mean(torch.Tensor(losses), dim=0)
 
     def load_state_dict(self, state_dict):
         self.model_obj.load_state_dict(state_dict)

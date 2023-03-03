@@ -42,7 +42,6 @@ from GANDLF.compute.generic import create_pytorch_objects
 from GANDLF.compute.training_loop import train_network
 from GANDLF.compute.forward_pass import validate_network
 from GANDLF.utils import populate_header_in_parameters, parseTrainingCSV, populate_channel_keys_in_params, send_model_to_device, get_class_imbalance_weights
-from GANDLF.data.ImagesFromDataFrame import ImagesFromDataFrame
 from GANDLF.models import get_model
 from GANDLF.schedulers import get_scheduler
 from GANDLF.optimizers import get_optimizer

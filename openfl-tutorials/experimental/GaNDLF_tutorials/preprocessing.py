@@ -5,21 +5,26 @@ from torchio.transforms import (
     Pad,
 )
 
-from .crop_zero_planes import CropExternalZeroplanes
-from .non_zero_normalize import NonZeroNormalizeOnMaskedRegion
-from .threshold_and_clip import (
+from crop_zero_planes import CropExternalZeroplanes
+from non_zero_normalize import NonZeroNormalizeOnMaskedRegion
+from threshold_and_clip import (
     threshold_transform,
     clip_transform,
 )
-from .normalize_rgb import (
+from normalize_rgb import (
     normalize_by_val_transform,
     normalize_imagenet_transform,
     normalize_standardize_transform,
     normalize_div_by_255_transform,
 )
-from .template_matching import histogram_matching, stain_normalizer
-from .resample_minimum import Resample_Minimum
-from .rgb_conversion import rgba2rgb_transform, rgb2rgba_transform
+
+# Don't think we need these
+histogram_matching, stain_normalizer = None, None
+
+from resample_minimum import Resample_Minimum
+
+# Don't think we need these
+rgba2rgb_transform, rgb2rgba_transform = None, None
 
 from torchio.transforms import (
     ZNormalization,
