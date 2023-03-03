@@ -3,10 +3,7 @@ import numpy as np
 import torch
 from torchio import DATA
 
-from GANDLF.data import (
-    get_train_loader,
-    get_validation_loader,
-)
+
 from GANDLF.models import global_models_dict
 from GANDLF.utils import populate_header_in_parameters, parseTrainingCSV, populate_channel_keys_in_params, get_class_imbalance_weights
 
