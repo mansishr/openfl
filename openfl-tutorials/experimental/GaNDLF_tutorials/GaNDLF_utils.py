@@ -108,37 +108,70 @@ def get_model_info(parameters, loss_function):
     
     return model_class, loss_function_w_reduction, loss_function_wo_reduction  
 
+def consistent_loader(loader, num_attempts, num_subjects):
+    chnl1_tensors = []
+    subject_ids = []
 
+    all_equal = True
 
+    for a_idx, attempt in enumerate(range(num_attempts+1)):
+        if a_idx == 0:
+            for s_idx, subject in enumerate(self.base_loader):
+                if s_idx == num_subjects:
+                    break
+                else:
+                    chnl1_tensors.append(subject['1']['data'])
+                    subject_ids.append(subject['subject_id'])
+        else:
+            print(f"Comparing one run of base loader with another...attempt={a_idx+1}")
+            equal = True
+            for s_idx, subject in enumerate(self.base_loader):
+                if s_idx == num_subjects:
+                    break
+                else:
+                    if not torch.equal(chnl1_tensors[s_idx], subject['1']['data']) or subject_ids[s_idx] != subject['subject_id']:
+                        equal = False
+            if not equal: 
+                all_equal = False
+    return all_equal
 
 # Help GaNDLF loaders be treated like numpy arrays (slicing). Also, help deepcopy GaNDLF loaders (via __reduce__)
 class GaNDLFLoaderWrapper(object):
+
+    # Some hard coded choices as to how many times to run 
+    # and how many subjects to check against when testing that the base loader
+    # for that it produces the same data over multiple usages
+    num_attempts = 5
+    num_subjects = 3
+
     def __init__(self, 
                  parameters, 
                  train, 
-                 csv_path, 
                  type_restrictions,
                  idx_restrictions, 
                  subject_to_feature, 
-                 subject_to_label, 
-                 base_loader=None):
+                 subject_to_label,
+                 csv_path = None, 
+                 base_loader=None, 
+                 num_attempts=num_attempts,
+                 num_subjects=num_subjects):
         """
         TODO rewrite this documentation below-----
         restriction (tuple of: str, np.ndarray): First component can be 'feature', 'label', or
         'feature_and_label', array specifies which indices to allow during iteration. Note base loader
-        must be deterministic. We insert a test for tjis determinism.
+        must load exactly the same upon each usage. We insert a test for this reproducibility below.
         """
         super().__init__()
             
         self.parameters = parameters
         self.train = train
-        self.csv_path = csv_path
         self.type_restrictions = type_restrictions
         self.idx_restrictions = idx_restrictions
         self.subject_to_feature = subject_to_feature
         self.subject_to_label = subject_to_label
         self.type_restrictions = type_restrictions 
         self.idx_restrictions = idx_restrictions
+        self.csv_path = csv_path
         self.base_loader = base_loader
         
         if self.base_loader is None:
@@ -146,39 +179,16 @@ class GaNDLFLoaderWrapper(object):
                                                  train=self.train, 
                                                  csv_path=self.csv_path)
             
-        # Try to catch the base loader breaking the assumption of determinism
-        # (this check is specific to BraTS) - only checks 1st channel so possible to not catch
-        chnl1_tensors = []
-        subject_ids = []
-
-        num_attempts = 3
-        num_subjects = 5
-
-        all_equal = True
-
-        for a_idx, attempt in enumerate(range(num_attempts+1)):
-            if a_idx == 0:
-                for s_idx, subject in enumerate(self.base_loader):
-                    if s_idx == num_subjects:
-                        break
-                    else:
-                        chnl1_tensors.append(subject['1']['data'])
-                        subject_ids.append(subject['subject_id'])
-            else:
-                print(f"Comparing one run of base loader with another...attempt={a_idx+1}")
-                equal = True
-                for s_idx, subject in enumerate(self.base_loader):
-                    if s_idx == num_subjects:
-                        break
-                    else:
-                        if not torch.equal(chnl1_tensors[s_idx], subject['1']['data']) or subject_ids[s_idx] != subject['subject_id']:
-                            equal = False
-                if not equal: 
-                    all_equal = False
-        if not all_equal:
+        # Try to catch the base loader breaking the assumption of reproducibility
+        # (this check is specific to BraTS) - only checks subject_id and 1st channel, 
+        # so it is possible that the fact of it not loading consistently is not catched
+        
+        if not consistent_loader(loader=self.base_loader,
+                                 num_attempts=num_attempts, 
+                                 num_subjects=num_subjects):
             raise ValueError(f"Base GaNDLF loader is not deterministic and so loader wrapper will not work!")
         else:
-            print(f"Base loader sent to GaNDLFLoaderWrapper appeared to be deterministic when tested against {num_attempts} attempts and checking only channel 1 of features.")        
+            print(f"Base loader sent to GaNDLFLoaderWrapper appeared to be deterministic when tested against {num_attempts} attempts checking only channel 1 of {num_subjects} subjects.")        
 
         self.base_loader_length = len(self.base_loader)       
         # some parameter handling
@@ -190,6 +200,8 @@ class GaNDLFLoaderWrapper(object):
             raise ValueError(
                 "The first element of the restrictions tuple must be 'feature', 'label', or 'feature_and_label'."
             )
+        if not base_loader and not csv_path:
+            raise ValueError(f"Exactly one of base_loader and csv_path should not be None.")
         if not isinstance(self.idx_restrictions, np.ndarray):
             raise ValueError(
                 "The second element of the restrictions tuple must be a numpy array."
@@ -269,11 +281,11 @@ class GaNDLFLoaderWrapper(object):
     def copy(self):
         return GaNDLFLoaderWrapper(parameters = self.parameters,
                                    train = self.train,
-                                   csv_path = self.csv_path,
                                    type_restrictions = self.type_restrictions,
                                    idx_restrictions = self.idx_restrictions,
                                    subject_to_feature = self.subject_to_feature,
-                                   subject_to_label = self.subject_to_label
+                                   subject_to_label = self.subject_to_label,
+                                   csv_path = self.csv_path,
                                    base_loader = self.base_loader)
 
     def __len__(self):
@@ -288,11 +300,11 @@ class GaNDLFLoaderWrapper(object):
         unpack = lambda info: GaNDLFLoaderWrapper(**info)
         packaged_info = {'parameters' : self.parameters,
                            'train' : self.train,
-                           'csv_path' : self.csv_path,
                            'type_restrictions' : self.type_restrictions,
                            'idx_restrictions' : self.idx_restrictions,
                            'subject_to_feature' : self.subject_to_feature,
                            'subject_to_label' : self.subject_to_label,
+                           'csv_path' : self.csv_path,
                            'base_loader' : self.base_loader}
         return unpack, packaged_info
 
@@ -372,4 +384,7 @@ class GaNDLFPyTorchModel(PytorchModel):
 
     def to(self, device):
         self.model_obj.to(device)
+
+
+
 
