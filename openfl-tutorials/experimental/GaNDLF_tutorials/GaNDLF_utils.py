@@ -5,83 +5,11 @@ from torchio import DATA
 
 
 from GANDLF.models import global_models_dict
-from GANDLF.utils import populate_header_in_parameters, parseTrainingCSV, populate_channel_keys_in_params, get_class_imbalance_weights
 
 from privacy_meter.model import PytorchModel
 
-from get_loaders import get_train_loader, get_validation_loader
-
-
-def subject_to_feature(subject_dict, gandlf_config):
-    features = torch.cat([subject_dict[key][DATA] for key in gandlf_config["channel_keys"]], 
-                             dim=1).float().to(gandlf_config["device"])
-    return features
-    
-def subject_to_label(subject_dict, gandlf_config):
-    print(f"Shape of label is: ")
-    return subject_dict["label"]["data"].float().to(gandlf_config["device"])
+from get_loaders import get_train_loader, get_validation_loader, get_single_loader
    
-    
-def get_single_loader(parameters, train, csv_path):
-    """
-    This function creates a data loader.
-    Args:
-        parameters (dict): The parameters dictionary.
-        train (bool): Whether or not the loader will be used for training (augmentation, patching, ...)
-        csv_path (str): The path to the CSV file.
-    Returns:
-        loader (torch.utils.data.DataLoader): A data loader for train or val or test.
-    """
-
-    # initialize loaders
-    loader, headers = None, None
-
-    if train:
-        parameter_key = 'training_data'
-    else:
-        parameter_key = 'validation_data'
-
-    # populate the data frames for the loader
-    parameters[parameter_key], headers = parseTrainingCSV(csv_path, train=train)
-    parameters = populate_header_in_parameters(parameters, headers)
-
-    if train:
-        loader = get_train_loader(parameters)
-        parameters["training_samples_size"] = len(loader)
-        # Calculate the weights here
-        (
-            parameters["weights"],
-            parameters["class_weights"],
-        ) = get_class_imbalance_weights(parameters["training_data"], parameters)
-
-    else:
-        # get the validation loader
-        loader = get_validation_loader(parameters)
-
-    return (loader, parameters)
-    
-    
-def get_loaders(parameters, train_csv_path=None, val_csv_path=None):
-    """
-    This function creates the data loaders for each colaborator train, and test data.
-    Args:
-        parameters (dict): The parameters dictionary.
-        train_csv_path (str): The path to the train CSV file.
-        val_csv_path (str): The path to the test CSV file.
-    Returns:
-        train_loader (torch.utils.data.DataLoader): The training data loader.
-        val_loader (torch.utils.data.DataLoader): The validation data loader.
-    """
-
-    train_loader, parameters = get_single_loader(parameters=parameters,
-                                                    train=True,
-                                                    csv_path=train_csv_path)
-    val_loader, parameters = get_single_loader(parameters=parameters,
-                                                train=False,
-                                                csv_path=val_csv_path)
-
-    return (train_loader, val_loader, parameters)
-
 
 def get_model_info(parameters, loss_function):
     """
@@ -115,7 +43,7 @@ def consistent_loader(loader, num_attempts, num_subjects):
 
     for a_idx, attempt in enumerate(range(num_attempts+1)):
         if a_idx == 0:
-            for s_idx, subject in enumerate(self.base_loader):
+            for s_idx, subject in enumerate(loader):
                 if s_idx == num_subjects:
                     break
                 else:
@@ -124,7 +52,7 @@ def consistent_loader(loader, num_attempts, num_subjects):
         else:
             print(f"Comparing one run of base loader with another...attempt={a_idx+1}")
             equal = True
-            for s_idx, subject in enumerate(self.base_loader):
+            for s_idx, subject in enumerate(loader):
                 if s_idx == num_subjects:
                     break
                 else:
@@ -141,15 +69,15 @@ class GaNDLFLoaderWrapper(object):
     # and how many subjects to check against when testing that the base loader
     # for that it produces the same data over multiple usages
     num_attempts = 5
-    num_subjects = 3
+    num_subjects = 5
 
     def __init__(self, 
                  parameters, 
                  train, 
-                 type_restrictions,
-                 idx_restrictions, 
+                 type_restrictions, 
                  subject_to_feature, 
                  subject_to_label,
+                 idx_restrictions=None,
                  csv_path = None, 
                  base_loader=None, 
                  num_attempts=num_attempts,
@@ -176,7 +104,8 @@ class GaNDLFLoaderWrapper(object):
         if self.base_loader is None:
             self.base_loader, self.parameters = get_single_loader(parameters=self.parameters, 
                                                  train=self.train, 
-                                                 csv_path=self.csv_path)
+                                                 csv_path=self.csv_path, 
+                                                 prevent_shuffling=True)
             
         # Try to catch the base loader breaking the assumption of reproducibility
         # (this check is specific to BraTS) - only checks subject_id and 1st channel, 

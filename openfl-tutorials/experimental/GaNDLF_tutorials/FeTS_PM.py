@@ -47,12 +47,16 @@ from GANDLF.schedulers import get_scheduler
 from GANDLF.optimizers import get_optimizer
 from GANDLF.losses.segmentation import MCD
 
-from GaNDLF_utils import get_loaders, GaNDLFLoaderWrapper, subject_to_feature, subject_to_label, GaNDLFPyTorchModel
+from GaNDLF_utils import GaNDLFLoaderWrapper, GaNDLFPyTorchModel
+from get_loaders import get_loaders, get_single_loader, subject_to_feature, subject_to_label
 warnings.filterwarnings("ignore")
 
 # set the random seed for repeatable results
 random_seed = 1234
 torch.manual_seed(random_seed)
+
+num_attempts = 5
+num_subjects = 5
 
 batch_size_train = 32
 batch_size_test = 1000
@@ -63,8 +67,6 @@ log_interval = 10
 # TODO: validate the use of 4 below
 # FIXME: Validate the use of 4 below
 loss_function = functools.partial(MCD, **{'num_classes': 4, 'loss_type': 1})
-
-
 
 
 def FedAvg(models):  # NOQA: N802
@@ -201,44 +203,29 @@ class FederatedFlow(FLSpec):
         self.global_model = copy.deepcopy(self.model)
 
         # Using collaborator private attributes to instantiate train, val, and test loaders
-        train_loader_info = self.gandlf_config, \
-                        True, \
-                        self.target_train_path, \
-                        ('feature_and_label', None), \
-                        functools.partial(subject_to_feature, **{'gandlf_config': self.gandlf_config}), \
-                        functools.partial(subject_to_label, **{'gandlf_config': self.gandlf_config}) 
-        self.train_loader_wrapper = GaNDLFLoaderWrapper(info=train_loader_info)
-        self.gandlf_config = self.train_loader_wrapper.parameters
+        self.train_loader, self.val_loader, self.gandlf_config = get_loaders(parameters=self.gandlf_config, 
+                                                         prevent_shuffling=False, 
+                                                         train_csv_path=self.target_train_path, 
+                                                         val_csv_path=self.target_train_path)
 
-        val_loader_info = self.gandlf_config, \
-                        False, \
-                        self.target_val_path, \
-                        ('feature_and_label', None), \
-                        functools.partial(subject_to_feature, **{'gandlf_config': self.gandlf_config}), \
-                        functools.partial(subject_to_label, **{'gandlf_config': self.gandlf_config}) 
-        self.val_loader_wrapper = GaNDLFLoaderWrapper(info=val_loader_info)
-        self.gandlf_config = self.val_loader_wrapper.parameters
 
-        test_loader_info = self.gandlf_config, \
-                        False, \
-                        self.target_test_path, \
-                        ('feature_and_label', None), \
-                        functools.partial(subject_to_feature, **{'gandlf_config': self.gandlf_config}), \
-                        functools.partial(subject_to_label, **{'gandlf_config': self.gandlf_config}) 
-        self.test_loader_wrapper = GaNDLFLoaderWrapper(info=test_loader_info)
-        self.gandlf_config = self.test_loader_wrapper.parameters
+     
+        self.test_loader, _ = get_single_loader(parameters=self.gandlf_config, 
+                                                     train=False, 
+                                                     csv_path=self.target_test_path, 
+                                                     prevent_shuffling=True) 
 
         print(f'Performing aggregated model validation for collaborator {self.input} on Device {self.device}')
         params = self.gandlf_config   # load parameters from gandlf config
         self.model = self.model.to(self.device)
         assert next(self.model.parameters()).device == self.device
         self.agg_validation_score = inference(network=self.model, 
-                                              test_loader=self.val_loader_wrapper.base_loader, 
+                                              test_loader=self.val_loader, 
                                               scheduler=None, 
                                               round_num=self.round_num, 
                                               params=params)
         self.agg_test_score = inference(network=self.model, 
-                                        test_loader=self.test_loader_wrapper.base_loader, 
+                                        test_loader=self.test_loader, 
                                         scheduler=None, 
                                         round_num=self.round_num, 
                                         params=params)
@@ -279,7 +266,7 @@ class FederatedFlow(FLSpec):
         for epoch in range(epochs):
             print(f'Run {epoch} epoch of {self.round_num} round')
             epoch_train_loss, epoch_train_metric = train_network(model=self.model,
-                                                                 train_dataloader=self.train_loader_wrapper.base_loader,
+                                                                 train_dataloader=self.train_loader,
                                                                  optimizer=optimizer,
                                                                  params=self.gandlf_config)
         train_metric_dict = {'loss': epoch_train_loss}
@@ -288,7 +275,7 @@ class FederatedFlow(FLSpec):
         self.local_train_score = train_metric_dict
         print(f'{self.input} value of {self.local_train_score}')
 
-        delattr(self, 'train_loader_wrapper')
+        delattr(self, 'train_loader')
     
         self.training_completed = True
 
@@ -312,20 +299,20 @@ class FederatedFlow(FLSpec):
 
         print("Val dataset performance")
         self.local_validation_score = inference(network=self.model, 
-                                                test_loader=self.val_loader_wrapper.base_loader, 
+                                                test_loader=self.val_loader, 
                                                 scheduler=self.scheduler, 
                                                 round_num=self.round_num, 
                                                 params=self.gandlf_config)
         print("Test dataset performance")
         self.local_test_score = inference(network=self.model, 
-                                                test_loader=self.test_loader_wrapper.base_loader, 
+                                                test_loader=self.test_loader, 
                                                 scheduler=self.scheduler, 
                                                 round_num=self.round_num, 
                                                 params=self.gandlf_config)
 
         # remove val and test loader attributes
-        delattr(self, 'val_loader_wrapper')
-        delattr(self, 'test_loader_wrapper')
+        delattr(self, 'val_loader')
+        delattr(self, 'test_loader')
 
         print(
             (
@@ -359,36 +346,48 @@ class FederatedFlow(FLSpec):
 
         # Note: The train boolean here is False for all since none of these are used for training
         
-        x_loader_info_common = [self.gandlf_config, \
-                                False, \
-                                ('feature', None), \
-                                functools.partial(subject_to_feature, **{'gandlf_config': self.gandlf_config}), \
-                                functools.partial(subject_to_label, **{'gandlf_config': self.gandlf_config})]
-        
-        y_loader_info_common = [self.gandlf_config, \
-                                False, \
-                                ('label', None), \
-                                functools.partial(subject_to_feature, **{'gandlf_config': self.gandlf_config}), \
-                                functools.partial(subject_to_label, **{'gandlf_config': self.gandlf_config})]
-
        
-        x_train_info = tuple(x_loader_info_common[:2] + [self.PM_train_path] + x_loader_info_common[2:])
-        x_train = GaNDLFLoaderWrapper(info=x_train_info)
+        x_train = GaNDLFLoaderWrapper(parameters=self.gandlf_config, 
+                                      train=True, 
+                                      type_restrictions='feature',
+                                      subject_to_feature=functools.partial(subject_to_feature, **{'gandlf_config': self.gandlf_config}), 
+                                      subject_to_label=functools.partial(subject_to_label, **{'gandlf_config': self.gandlf_config}),
+                                      csv_path=self.PM_train_path)
 
-        y_train_info = tuple(y_loader_info_common[:2] + [self.PM_train_path] + y_loader_info_common[2:])
-        y_train = GaNDLFLoaderWrapper(info=y_train_info)
+        y_train = GaNDLFLoaderWrapper(parameters=self.gandlf_config, 
+                                      train=True, 
+                                      type_restrictions='label',
+                                      subject_to_feature=functools.partial(subject_to_feature, **{'gandlf_config': self.gandlf_config}), 
+                                      subject_to_label=functools.partial(subject_to_label, **{'gandlf_config': self.gandlf_config}),
+                                      csv_path=self.PM_train_path)
 
-        x_test_info = tuple(x_loader_info_common[:2] + [self.PM_test_path] + x_loader_info_common[2:])
-        x_test = GaNDLFLoaderWrapper(info=x_test_info)
+        x_test = GaNDLFLoaderWrapper(parameters=self.gandlf_config, 
+                                      train=True, 
+                                      type_restrictions='feature',
+                                      subject_to_feature=functools.partial(subject_to_feature, **{'gandlf_config': self.gandlf_config}), 
+                                      subject_to_label=functools.partial(subject_to_label, **{'gandlf_config': self.gandlf_config}),
+                                      csv_path=self.PM_test_path)
 
-        y_test_info = tuple(y_loader_info_common[:2] + [self.PM_test_path] + y_loader_info_common[2:])
-        y_test = GaNDLFLoaderWrapper(info=x_test_info)
+        y_test = GaNDLFLoaderWrapper(parameters=self.gandlf_config, 
+                                      train=True, 
+                                      type_restrictions='label',
+                                      subject_to_feature=functools.partial(subject_to_feature, **{'gandlf_config': self.gandlf_config}), 
+                                      subject_to_label=functools.partial(subject_to_label, **{'gandlf_config': self.gandlf_config}),
+                                      csv_path=self.PM_test_path)
 
-        x_pop_info = tuple(x_loader_info_common[:2] + [self.PM_pop_path] + x_loader_info_common[2:])
-        x_pop = GaNDLFLoaderWrapper(info=x_pop_info)
+        x_pop = GaNDLFLoaderWrapper(parameters=self.gandlf_config, 
+                                      train=True, 
+                                      type_restrictions='feature',
+                                      subject_to_feature=functools.partial(subject_to_feature, **{'gandlf_config': self.gandlf_config}), 
+                                      subject_to_label=functools.partial(subject_to_label, **{'gandlf_config': self.gandlf_config}),
+                                      csv_path=self.PM_pop_path)
 
-        y_pop_info = tuple(y_loader_info_common[:2] + [self.PM_pop_path] + y_loader_info_common[2:])
-        y_pop = GaNDLFLoaderWrapper(info=y_pop_info)  
+        y_pop = GaNDLFLoaderWrapper(parameters=self.gandlf_config, 
+                                      train=True, 
+                                      type_restrictions='label',
+                                      subject_to_feature=functools.partial(subject_to_feature, **{'gandlf_config': self.gandlf_config}), 
+                                      subject_to_label=functools.partial(subject_to_label, **{'gandlf_config': self.gandlf_config}),
+                                      csv_path=self.PM_pop_path)
   
 
         # The 'g' attribute defines the groups within which thresholds are computed independently
@@ -691,7 +690,8 @@ if __name__ == "__main__":
 
     _, _, gandlf_config = get_loaders(train_csv_path=target_train_path, 
                                       val_csv_path=target_val_path, 
-                                      parameters=gandlf_config)
+                                      parameters=gandlf_config, 
+                                      prevent_shuffling=False)
     
 
 

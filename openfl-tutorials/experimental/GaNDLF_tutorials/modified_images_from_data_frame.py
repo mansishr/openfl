@@ -239,8 +239,8 @@ def ImagesFromDataFrame(
         samples_per_volume=q_samples_per_volume,
         sampler=sampler,
         num_workers=q_num_workers,
-        shuffle_subjects=True,
-        shuffle_patches=True,
+        shuffle_subjects=shuffle_subjects,
+        shuffle_patches=shuffle_patches,
         verbose=q_verbose,
     )
     return patches_queue
