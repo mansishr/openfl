@@ -2,6 +2,7 @@ import os
 import numpy as np
 
 import torch
+from torch.utils.data import DataLoader
 import torchio
 from torchio.transforms import Pad
 import SimpleITK as sitk
@@ -25,7 +26,8 @@ global_sampler_dict = {
 
 # This function takes in a dataframe, with some other parameters and returns the dataloader
 def ImagesFromDataFrame(
-    dataframe, parameters, train, apply_zero_crop=False, loader_type="", prevent_shuffling=False
+    dataframe, parameters, train, apply_zero_crop=False, loader_type="", prevent_shuffling=False, 
+    subject_to_patch_location = None, script_first_pass=True
 ):
     """
     Reads the pandas dataframe and gives the dataloader to use for training/validation/testing
@@ -60,6 +62,33 @@ def ImagesFromDataFrame(
     preprocessing = parameters["data_preprocessing"]
     in_memory = parameters["in_memory"]
     enable_padding = parameters["enable_padding"]
+    consistent_patches = parameters.get("consistent_patches")
+    if consistent_patches:
+        if not subject_to_patch_location:
+            # here we are running for the first time in order to collect appropriate patch locations
+            subject_to_patch_location = {}
+            # this will reset upon second run to be whatever it is specified to be in the config
+            in_memory = True
+            if sampler != 'label':
+                raise ValueError(f"Cannot run with consistent patches if original sampler is not 'label'.")
+        elif subject_to_patch_location == {}:
+            raise ValueError(f"Passed empty subject_to_patch_location dict to ImagesFromDataFrame when consistent patches was requested. Instead allow to be None and let it be inferred.")
+        else:
+            # changing the sampler here
+            sampler = 'weighted'
+            # Here we are running a second time after having constructed the subject_to_patch_location dict
+        
+        # validate that a few assumptions are true (being heavy handed here, only allowing what was tested)
+        # absolutely necessary are in_memory, data_augmentation, sampler, q_samples_per_volume
+        if augmentations != {}:
+            raise ValueError(f"Data augmentations cannot be present when requesting consistent patches.")
+        if q_samples_per_volume != 1:
+            raise ValueError(f"When requesting consistent patches, 1_samples_per_volume needs to be 1.")
+        if q_num_workers != 0:
+            raise ValueError(f"When requesting consistent patches, num_workers must be 1 (may be able to remove this)")
+        if not in_memory:
+            raise ValueError(f"When requesting consistent patches, in_memory must be set to True.")
+
 
     # Finding the dimension of the dataframe for computational purposes later
     num_row, num_col = dataframe.shape
@@ -102,6 +131,17 @@ def ImagesFromDataFrame(
         # such as different image modalities, labels, any other data
         subject_dict = {}
         subject_dict["subject_id"] = str(dataframe[subjectIDHeader][patient])
+        if consistent_patches and sampler == 'weighted':
+            single_channel_image_shape = sitk.ReadImage(dataframe[channelHeaders[0]][patient]).GetSize()
+            patch_center_pointmass = torch.unsqueeze(torch.zeros(single_channel_image_shape), dim=0)
+            idx_0 = subject_to_patch_location[subject_dict["subject_id"]][0]
+            idx_1 = subject_to_patch_location[subject_dict["subject_id"]][1]
+            idx_2 = subject_to_patch_location[subject_dict["subject_id"]][2]
+            patch_center_pointmass[0][idx_0][idx_1][idx_2] = 1.0
+            total_mass = torch.sum(patch_center_pointmass)
+            if total_mass != 1.0:
+                raise ValueError(f"Problem with total mass of pointmass, has value of: ", total_mass)         
+            subject_dict["patch_center_pointmass"] = patch_center_pointmass
         skip_subject = False
         # iterating through the channels/modalities/timepoints of the subject
         for channel in channelHeaders:
@@ -223,7 +263,10 @@ def ImagesFromDataFrame(
     if not train:
         return subjects_dataset
     if sampler in ("weighted", "weightedsampler", "weightedsample"):
-        sampler = global_sampler_dict[sampler](patch_size, probability_map="label")
+        if consistent_patches and sampler == 'weighted':
+            sampler = global_sampler_dict[sampler](patch_size, probability_map="patch_center_pointmass")
+        else:
+            sampler = global_sampler_dict[sampler](patch_size, probability_map="label")
     else:
         sampler = global_sampler_dict[sampler](patch_size)
     # all of these need to be read from model.yaml
@@ -243,4 +286,20 @@ def ImagesFromDataFrame(
         shuffle_patches=shuffle_patches,
         verbose=q_verbose,
     )
+    print(consistent_patches, sampler)
+    if consistent_patches and script_first_pass:
+        for subject in DataLoader(patches_queue,batch_size=1,shuffle=False,pin_memory=False):
+            top_corner_x, top_corner_y, top_corner_z, bottom_corner_x, bottom_corner_y, bottom_corner_z = tuple(torch.flatten(subject["location"]))
+            patch_x = int(float(bottom_corner_x + top_corner_x)/2)
+            patch_y = int(float(bottom_corner_y + top_corner_y)/2)
+            patch_z = int(float(bottom_corner_z + top_corner_z)/2)
+            subject_to_patch_location[subject['subject_id'][0]] = np.array([patch_x, patch_y, patch_z])
+        return ImagesFromDataFrame(dataframe=dataframe, 
+                                   parameters=parameters, 
+                                   train=train, 
+                                   apply_zero_crop=apply_zero_crop, 
+                                   loader_type=loader_type, 
+                                   prevent_shuffling=prevent_shuffling, 
+                                   subject_to_patch_location = subject_to_patch_location, 
+                                   script_first_pass=False)
     return patches_queue

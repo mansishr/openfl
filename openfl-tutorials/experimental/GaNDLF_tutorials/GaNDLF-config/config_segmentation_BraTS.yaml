@@ -37,6 +37,8 @@ patch_size: [64,64,64]
 # patch_size: [28,28]
 # uniform: UniformSampler or label: LabelSampler
 patch_sampler: label
+# this ensures that the patches coming out are consistent across muliple uses of the loader
+consistent_patches: True
 # Number of epochs
 num_epochs: 1
 # Set the patience - measured in number of epochs after which, if the performance metric does not improve, exit the training loop - defaults to the number of epochs
@@ -122,9 +124,9 @@ parallel_compute_command: ''
 pin_memory_dataloader: false
 print_rgb_label_warning: true
 
-q_max_length: 100
+q_max_length: 1
 # this determines the number of patches to extract from each volume. A small number of patches ensures a large variability in the queue, but training will be slower
-q_samples_per_volume: 40
+q_samples_per_volume: 1
 # this determines the number subprocesses to use for data loading; '0' means main process is used
 q_num_workers: 0 # scale this according to available CPU resources
 # used for debugging

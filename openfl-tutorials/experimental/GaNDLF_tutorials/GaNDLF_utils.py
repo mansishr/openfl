@@ -35,7 +35,7 @@ def get_model_info(parameters, loss_function):
     
     return model_class, loss_function_w_reduction, loss_function_wo_reduction  
 
-def consistent_loader(loader, num_attempts, num_subjects):
+def consistent_loader(loader, num_attempts, num_subjects, verbose=True):
     chnl1_tensors = []
     subject_ids = []
 
@@ -57,10 +57,22 @@ def consistent_loader(loader, num_attempts, num_subjects):
                     break
                 else:
                     if not torch.equal(chnl1_tensors[s_idx], subject['1']['data']) or subject_ids[s_idx] != subject['subject_id']:
+                        if verbose:
+                            tensor_diff_idxs = ~(chnl1_tensors[s_idx] == subject['1']['data'])
+                            first_time = chnl1_tensors[s_idx][tensor_diff_idxs]
+                            second_time = subject['1']['data'][tensor_diff_idxs]
+                            print(f"\nGot a difference in what loader produced:")
+                            print("--- Subjects ---")
+                            print(f"FIRST TIME: {subject_ids[s_idx]}")
+                            print(f"SECOND TIME: {subject['subject_id']}\n")
+                            print("--- Part Tensors ---")
+                            print(f"FIRST TIME: {first_time}")
+                            print(f"SECOND TIME: {second_time}\n\n")
                         equal = False
             if not equal: 
                 all_equal = False
     return all_equal
+
 
 # Help GaNDLF loaders be treated like numpy arrays (slicing). Also, help deepcopy GaNDLF loaders (via __reduce__)
 class GaNDLFLoaderWrapper(object):
