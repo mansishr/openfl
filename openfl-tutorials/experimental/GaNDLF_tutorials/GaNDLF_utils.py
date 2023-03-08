@@ -50,7 +50,8 @@ def consistent_loader(loader, num_attempts, num_subjects, verbose=False):
                     chnl1_tensors.append(subject['1']['data'])
                     subject_ids.append(subject['subject_id'])
         else:
-            print(f"Comparing one run of base loader with another...attempt={a_idx+1}")
+            if verbose:
+                print(f"Comparing one run of base loader with another...attempt={a_idx+1}")
             equal = True
             for s_idx, subject in enumerate(loader):
                 if s_idx == num_subjects:
@@ -217,8 +218,6 @@ class GaNDLFLoaderWrapper(object):
             self.idx_restrictions = idx_restrictions
 
     def copy(self):
-
-        print(f"\n###################\n A loader was copied!!\n########################\n")
 
         return GaNDLFLoaderWrapper(parameters = self.parameters,
                                    train = self.train,

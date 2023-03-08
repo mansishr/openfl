@@ -66,7 +66,7 @@ log_interval = 10
 
 # TODO: validate the use of 4 below
 # FIXME: Validate the use of 4 below
-loss_function = functools.partial(MCD, **{'num_classes': 4, 'loss_type': 1})
+loss_function = functools.partial(MCD, **{'num_class': 4, 'loss_type': 1})
 
 
 def FedAvg(models):  # NOQA: N802
