@@ -35,7 +35,7 @@ def get_model_info(parameters, loss_function):
     
     return model_class, loss_function_w_reduction, loss_function_wo_reduction  
 
-def consistent_loader(loader, num_attempts, num_subjects, verbose=True):
+def consistent_loader(loader, num_attempts, num_subjects, verbose=False):
     chnl1_tensors = []
     subject_ids = []
 
@@ -177,9 +177,7 @@ class GaNDLFLoaderWrapper(object):
 
     def __iter__(self):
         if self.base_iter_idx is not None:
-            raise RuntimeError(
-                f"Method: __iter__ was called on {self.__repr__()} before the previous iterator was completed."
-            )
+            return self.copy().__iter__()
         # initialize
         self.base_iter = self.base_loader.__iter__()
         self.base_iter_idx = 0
@@ -219,14 +217,16 @@ class GaNDLFLoaderWrapper(object):
             self.idx_restrictions = idx_restrictions
 
     def copy(self):
+
+        print(f"\n###################\n A loader was copied!!\n########################\n")
+
         return GaNDLFLoaderWrapper(parameters = self.parameters,
                                    train = self.train,
                                    type_restrictions = self.type_restrictions,
                                    idx_restrictions = self.idx_restrictions,
                                    subject_to_feature = self.subject_to_feature,
                                    subject_to_label = self.subject_to_label,
-                                   csv_path = self.csv_path,
-                                   base_loader = self.base_loader)
+                                   csv_path = self.csv_path)
 
     def __len__(self):
         return len(self.idx_restrictions)

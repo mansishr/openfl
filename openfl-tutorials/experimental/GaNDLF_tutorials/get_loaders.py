@@ -1,4 +1,6 @@
+import torch
 from torch.utils.data import DataLoader
+from torchio import DATA
 
 from modified_images_from_data_frame import ImagesFromDataFrame
 from GANDLF.utils.write_parse import get_dataframe

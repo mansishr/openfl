@@ -50,6 +50,9 @@ def ImagesFromDataFrame(
     patches_queue: torchio.Queue
         This is the output for training, which is the subjects_dataset queue after patching and data augmentation is taken into account
     """
+
+    print(f"BRANDON PRINT -- subject_to_patch_location: ", subject_to_patch_location)
+
     # store in previous variable names
     patch_size = parameters["patch_size"]
     headers = parameters["headers"]
@@ -140,7 +143,8 @@ def ImagesFromDataFrame(
             patch_center_pointmass[0][idx_0][idx_1][idx_2] = 1.0
             total_mass = torch.sum(patch_center_pointmass)
             if total_mass != 1.0:
-                raise ValueError(f"Problem with total mass of pointmass, has value of: ", total_mass)         
+                raise ValueError(f"Problem with total mass of pointmass, has value of: ", total_mass)
+            print(f"BRANDON PRINT -- assigning a point mass that has a one in location: {(patch_center_pointmass==1).nonzero(as_tuple=True)}")         
             subject_dict["patch_center_pointmass"] = patch_center_pointmass
         skip_subject = False
         # iterating through the channels/modalities/timepoints of the subject
@@ -263,8 +267,12 @@ def ImagesFromDataFrame(
     if not train:
         return subjects_dataset
     if sampler in ("weighted", "weightedsampler", "weightedsample"):
-        if consistent_patches and sampler == 'weighted':
-            sampler = global_sampler_dict[sampler](patch_size, probability_map="patch_center_pointmass")
+        if consistent_patches:
+            if not script_first_pass:
+                if sampler != 'weighted':
+                    raise ValueError(f"Should have a weighted sampler at the second pass.")
+                else:
+                    sampler = global_sampler_dict[sampler](patch_size, probability_map="patch_center_pointmass")
         else:
             sampler = global_sampler_dict[sampler](patch_size, probability_map="label")
     else:
