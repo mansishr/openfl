@@ -403,8 +403,8 @@ class FederatedFlow(FLSpec):
                     'y': y_pop}
 
         # now construct the dataset dict
-        target_dataset = Dataset(data_dict={'train': {'x': x_train, 'y': y_train}, 
-                                            'test': {'x': x_test, 'y': y_test}}, 
+        target_dataset = Dataset(data_dict={'train': train_dataset, 
+                                            'test': test_dataset}, 
                                  default_input='x', 
                                 default_output='y')
         pm_population_dataset = Dataset(data_dict={'train': pop_dataset}, 

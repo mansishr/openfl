@@ -13,7 +13,7 @@ def subject_to_feature(subject_dict, gandlf_config):
     return features
     
 def subject_to_label(subject_dict, gandlf_config):
-    print(f"Shape of label is: ")
+    print(f"Shape of label is: ", subject_dict["label"]["data"].shape)
     return subject_dict["label"]["data"].float().to(gandlf_config["device"])
 
 
