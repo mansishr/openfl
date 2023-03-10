@@ -30,7 +30,6 @@ from GANDLF.models import get_model
 from GANDLF.schedulers import get_scheduler
 from GANDLF.optimizers import get_optimizer
 import os
-os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3,4,5"
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -113,10 +112,10 @@ def FedAvg(models):
     new_model.load_state_dict(state_dict)
     return new_model  
 
-def inference(network, test_loader, scheduler, round_num, params):
+def inference(network, val_loader, scheduler, round_num, params):
     network.eval()
     epoch_valid_loss, epoch_valid_metric = validate_network(model=network,
-                                                            valid_dataloader=test_loader,
+                                                            valid_dataloader=val_loader,
                                                             scheduler=scheduler,
                                                             params=params,
                                                             epoch=round_num,
@@ -142,7 +141,7 @@ class FederatedFlow(FLSpec):
         self.total_rounds = total_rounds
         self.top_model_accuracy = top_model_accuracy
         self.device = device
-        self.round_num = 0                                 # starting round
+        self.round_num = 0                                 
 
     @aggregator
     def start(self):
@@ -155,12 +154,15 @@ class FederatedFlow(FLSpec):
     @collaborator
     def aggregated_model_validation(self):
         print(f'Performing aggregated model validation for collaborator {self.input} on Device {self.device[self.input]}')
-        params = self.params   # load parameters from gandlf config
+        self.train_loader, self.val_loader, self.params = get_loaders(parameters=self.params, 
+                                                         train_csv_path=self.train_csv_path, 
+                                                         val_csv_path=self.val_csv_path)
         
         self.model = self.model.to(self.device[self.input])
         assert next(self.model.parameters()).device == self.device[self.input]
 
         # updating gandlf config
+        params = self.params
         params["model_parameters"] = model.parameters()
         self.optimizer = get_optimizer(params)
         params["optimizer_object"] = self.optimizer
@@ -176,7 +178,7 @@ class FederatedFlow(FLSpec):
             self.scheduler = None
         params["device"] = self.device[self.input]
         
-        self.agg_validation_score = inference(self.model, self.test_loader, self.scheduler, self.round_num, params)
+        self.agg_validation_score = inference(self.model, self.val_loader, self.scheduler, self.round_num, params)
         self.params = params
 
         print(f'{self.input} value of {self.agg_validation_score}')
@@ -200,6 +202,7 @@ class FederatedFlow(FLSpec):
         self.local_train_score = train_metric_dict
         print(f'{self.input} value of {self.local_train_score}')
         self.training_completed = True
+        delattr(self, 'train_loader')
 
         self.next(self.local_model_validation)
 
@@ -207,9 +210,10 @@ class FederatedFlow(FLSpec):
     def local_model_validation(self):
         print(f'Performing local model validation for collaborator {self.input} on Device {self.device[self.input]}')
 
-        self.local_validation_score = inference(self.model, self.test_loader, self.scheduler, self.round_num, self.params)
+        self.local_validation_score = inference(self.model, self.val_loader, self.scheduler, self.round_num, self.params)
         
         print(f'{self.input} value of {self.local_validation_score}')
+        delattr(self, 'val_loader')
         self.next(self.join, exclude=['training_completed'])
 
     @aggregator
@@ -317,27 +321,29 @@ if __name__ == '__main__':
 
     for idx, collaborator in enumerate(collaborators):
         train_csv_path = os.path.join(args.csvdirpath, ("_".join(["seg_test","train",collaborator.name])+".csv"))
-        test_csv_path = os.path.join(args.csvdirpath, ("_".join(["seg_test","val",collaborator.name])+".csv"))
-        train_loader, test_loader, local_gandlf_config = get_loaders(parameters=gandlf_config,
+        val_csv_path = os.path.join(args.csvdirpath, ("_".join(["seg_test","val",collaborator.name])+".csv"))
+        _, _, local_gandlf_config = get_loaders(parameters=gandlf_config,
                                                 train_csv_path=train_csv_path, 
-                                                val_csv_path=test_csv_path)
+                                                val_csv_path=val_csv_path)
         collaborator.private_attributes = {
-                'train_loader': train_loader,
-                'test_loader' : test_loader,
+                'train_csv_path': train_csv_path,
+                'val_csv_path' : val_csv_path,
                 'params'      : local_gandlf_config 
         }
 
-    local_runtime = LocalRuntime(aggregator=aggregator, collaborators=collaborators)
+    local_runtime = LocalRuntime(aggregator=aggregator, collaborators=collaborators, backend='single_process')
     print(f'Local runtime collaborators = {local_runtime.collaborators}')
     
-    model = get_model(gandlf_config)
+    model = get_model(local_gandlf_config)
     top_model_accuracy = 0
     num_of_rounds = 10
 
-    flflow = FederatedFlow(model=model, 
+    flflow = FederatedFlow(model=model,
                            collaborator_names=None,
                            device=device,
                            total_rounds=num_of_rounds,
                            top_model_accuracy=top_model_accuracy)
     flflow.runtime = local_runtime
+    deepcopy(flflow)
+    print("Deepcopied succesfully before run")
     flflow.run()
