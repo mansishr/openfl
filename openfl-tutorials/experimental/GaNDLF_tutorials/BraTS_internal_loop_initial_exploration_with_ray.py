@@ -230,44 +230,37 @@ class FederatedFlow(FLSpec):
     def aggregated_model_validation(self):
         print(f'Performing aggregated model validation for collaborator {self.input} on Device {self.device[self.input]}')
         
-        # Brandon DEBUG - below commenting out instantiation and use of val loader
-        """
         self.val_loader = Brandon_loader((self.params, 
                                             self.val_csv_path, 
                                             False)) 
         self.params, _, _ = self.val_loader.info
         
-        params = self.params 
+        self.augmented_params = deepcopy(self.params) 
         
         self.model = self.model.to(self.device[self.input])
         assert next(self.model.parameters()).device == self.device[self.input]
         
         # updating gandlf config
-        params["model_parameters"] = model.parameters()
-        self.optimizer = get_optimizer(params)
-        params["optimizer_object"] = self.optimizer
+        self.augmented_params["model_parameters"] = model.parameters()
+        self.optimizer = get_optimizer(self.augmented_params)
+        self.augmented_params["optimizer_object"] = self.optimizer
         optimizer_to_device(optimizer=self.optimizer, 
                     device=self.device[self.input])
-        if "scheduler" in params:
-            if not ("step_size" in params["scheduler"]):
-                params["scheduler"]["step_size"] = (
-                    params["training_samples_size"] / params["learning_rate"]
+        if "scheduler" in self.augmented_params:
+            if not ("step_size" in self.augmented_params["scheduler"]):
+                self.augmented_params["scheduler"]["step_size"] = (
+                    self.augmented_params["training_samples_size"] / self.augmented_params["learning_rate"]
                 )
-            self.scheduler = get_scheduler(params)
+            self.scheduler = get_scheduler(self.augmented_params)
         else:
             self.scheduler = None
-        params["device"] = self.device[self.input]
+        self.augmented_params["device"] = self.device[self.input]
         
-        self.agg_validation_score = inference(self.model, self.val_loader, self.scheduler, self.round_num, params)
-        self.params = params
+        self.agg_validation_score = inference(self.model, self.val_loader, self.scheduler, self.round_num, self.augmented_params)
 
         print(f'{self.input} value of {self.agg_validation_score}')
 
         delattr(self, 'val_loader')
-        """
-
-        # Brandon DEBUG - setting artificial agg val score below to see if we can run without loaders
-        self.agg_validation_score = {'loss': 400.0, 'valid_dice': 0.5}
 
         self.next(self.train)
         
@@ -275,22 +268,20 @@ class FederatedFlow(FLSpec):
     def train(self):
         print(f'Performing model training for collaborator {self.input} on Device {self.device[self.input]}')
         
-        # Brandon DEBUG commenting out train loader instantiation and usage below
-        """
-        self.train_loader = Brandon_loader((self.params, 
+        self.train_loader = Brandon_loader((self.augmented_params, 
                                             self.train_csv_path, 
                                             True))
-        self.params, _, _ = self.train_loader.info 
+        self.augmented_params, _, _ = self.train_loader.info 
         
 
         self.model.train()
-        epochs = self.params["num_epochs"]
+        epochs = self.augmented_params["num_epochs"]
         for epoch in range(epochs):
             print(f'Run {epoch} epoch of {self.round_num} round')
             epoch_train_loss, epoch_train_metric = train_network(model=self.model,
                                                                  train_dataloader=self.train_loader,
                                                                  optimizer=self.optimizer,
-                                                                 params=self.params)
+                                                                 params=self.augmented_params)
         train_metric_dict = {'loss': epoch_train_loss}
         for k, v in epoch_train_metric.items():
             train_metric_dict[f'train_{k}'] = v
@@ -298,35 +289,27 @@ class FederatedFlow(FLSpec):
         print(f'{self.input} value of {self.local_train_score}')
 
         delattr(self, 'train_loader')
-        """
+       
         self.training_completed = True
-
-        # Brandon DEBUG below giving a fake loss
-        self.local_train_score = {'loss': 100.0, 'train_dice': 0.5}
 
         self.next(self.local_model_validation)
 
     @collaborator(num_gpus=1)
     def local_model_validation(self):
 
-        """
-        # Brandon DEBUG
-        self.val_loader = Brandon_loader((self.params, 
+        self.val_loader = Brandon_loader((self.augmented_params, 
                                             self.val_csv_path, 
                                             False)) 
-        self.params, _, _ = self.val_loader.info
+        self.augmented_params, _, _ = self.val_loader.info
 
         print(f'Performing local model validation for collaborator {self.input} on Device {self.device[self.input]}')
 
-        self.local_validation_score = inference(self.model, self.val_loader, self.scheduler, self.round_num, self.params)
+        self.local_validation_score = inference(self.model, self.val_loader, self.scheduler, self.round_num, self.augmented_params)
         
         delattr(self, 'val_loader')
+        delattr(self, 'augmented_params')
 
-        print(f'{self.input} value of {self.local_validation_score}')
-        """
-
-        # Brandon DEBUG - commented above so wanted to provide a face val score to see if it can run without loaders
-        self.local_validation_score = {'loss': 300.0, 'valid_dice': 0.5}
+        print(f'{self.input} value of {self.local_validation_score}')       
 
         self.next(self.join, exclude=['training_completed'])
 
