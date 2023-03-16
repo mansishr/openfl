@@ -295,16 +295,15 @@ class FederatedFlow(FLSpec):
                 f"{self.input} in round {self.round_num}"
             )
         )
-        print(self.device)
         start_time = time.time()
 
-        print("Val dataset performance")
+        # Val dataset performance
         self.local_validation_score = inference(network=self.model, 
                                                 test_loader=self.val_loader, 
                                                 scheduler=self.scheduler, 
                                                 round_num=self.round_num, 
                                                 params=self.gandlf_config)
-        print("Test dataset performance")
+        # Test dataset performance
         self.local_test_score = inference(network=self.model, 
                                                 test_loader=self.test_loader, 
                                                 scheduler=self.scheduler, 
@@ -329,7 +328,6 @@ class FederatedFlow(FLSpec):
             or self.round_num % self.local_pm_info.interval == 0
             or self.round_num == self.total_rounds
         ):
-            print("Performing Auditing")
             self.next(self.audit)
         else:
             self.next(self.join, exclude=["training_completed"])
@@ -529,9 +527,11 @@ class FederatedFlow(FLSpec):
                 )
                 self.top_model_accuracy = self.aggregated_model_val_accuracy
             self.round_num += 1
+            print()
             print(20 * "#")
             print(f"Round {self.round_num}...")
             print(20 * "#")
+            print()
             self.next(
                 self.aggregated_model_validation,
                 foreach="collaborators",
@@ -698,15 +698,11 @@ if __name__ == "__main__":
 
     # To activate the ray backend with parallel collaborator tasks run in their own process
     # and exclusive GPUs assigned to tasks, set LocalRuntime with backend='ray':
-    local_runtime = LocalRuntime(aggregator=aggregator, collaborators=collaborators)
+    local_runtime = LocalRuntime(aggregator=aggregator, collaborators=collaborators, backend='ray')
 
     print(f"Local runtime collaborators = {local_runtime.collaborators}")
 
-    # change to the internal flow loop
-    model = get_model(gandlf_config)
-    
-    
-    
+    model = get_model(gandlf_config)   
     top_model_accuracy = 0
 
     """
