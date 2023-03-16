@@ -136,10 +136,8 @@ class LocalRuntime(Runtime):
                                execution)
         """
         
-        from openfl.experimental.interface import (
-            FLSpec,
-            final_attributes,
-        )
+        from openfl.experimental.interface import final_attributes
+        from local_brandon_copy_of_flspec import FLSpec
 
         # This is an addition that maybe is not needed (put here by Brandon)
         FLSpec._clones = flspec_obj._clones

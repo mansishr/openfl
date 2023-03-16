@@ -484,34 +484,23 @@ class FederatedFlow(FLSpec):
         delattr(self, "test_dataset")
         delattr(self, "test_loader")
         delattr(self, "population_dataset")
-        self.next(self.join, exclude=["training_completed"])
         """
+        self.next(self.join, exclude=["training_completed"])
 
     @aggregator
     def join(self, inputs):
-        self.average_loss = sum(input.loss for input in inputs) / len(inputs)
-        self.aggregated_model_val_accuracy = sum(
-            input.agg_validation_score for input in inputs
-        ) / len(inputs)
-        self.aggregated_model_test_accuracy = sum(
-            input.agg_test_score for input in inputs
-        ) / len(inputs)
-        
-        self.local_model_val_accuracy = sum(
-            input.local_validation_score for input in inputs
-        ) / len(inputs)
-        self.local_model_test_accuracy = sum(
-            input.local_test_score for input in inputs
-        ) / len(inputs)
-        print(
-            f"Average aggregated model validation values = {self.aggregated_model_val_accuracy}"
-        )
-        print(
-            f"Average aggregated model test values = {self.aggregated_model_test_accuracy}"
-        )
-        print(f"Average training loss = {self.average_loss}")
-        print(f"Average local model validation values = {self.local_model_val_accuracy}")
-        print(f"Average local model test values = {self.local_model_test_accuracy}")
+        self.average_train_loss = sum(input.local_train_score['loss'] for input in inputs)/len(inputs)
+        self.average_aggregated_valid_loss = sum(input.agg_validation_score['loss'] for input in inputs)/len(inputs)
+        self.average_local_valid_loss = sum(input.local_validation_score['loss'] for input in inputs)/len(inputs)
+        self.aggregated_valid_accuracy = sum(input.agg_validation_score['valid_dice'] for input in inputs)/len(inputs)
+        self.local_valid_accuracy = sum(input.local_validation_score['valid_dice'] for input in inputs)/len(inputs)
+        self.local_train_accuracy = sum(input.local_train_score['train_dice'] for input in inputs)/len(inputs)
+        print(f'Average training loss = {self.average_train_loss}')
+        print(f'Average local training accuracy = {self.local_train_accuracy}')
+        print(f'Average aggregared model validation loss = {self.average_aggregated_valid_loss}')
+        print(f'Average aggregated model validation accuracy = {self.aggregated_valid_accuracy}')
+        print(f'Average local model validation loss = {self.average_local_valid_loss}')
+        print(f'Average local model validation accuracy = {self.local_valid_accuracy}')
 
         self.model = FedAvg([input.model.cpu() for input in inputs])
         self.global_model.load_state_dict(deepcopy(self.model.state_dict()))
