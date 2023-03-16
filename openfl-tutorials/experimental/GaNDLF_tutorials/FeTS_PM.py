@@ -38,6 +38,9 @@ import os
 import argparse
 import warnings
 
+# os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3,4,5"
+os.environ["CUDA_VISIBLE_DEVICES"]="0,2,3,4,5"
+
 from GANDLF.parseConfig import parseConfig
 from GANDLF.compute.generic import create_pytorch_objects
 from GANDLF.compute.training_loop import train_network
@@ -65,8 +68,9 @@ learning_rate = 0.005
 momentum = 0.9
 log_interval = 10
 
-# TODO: validate the use of 4 below
+# Brandon TODO: validate the use of 4 below
 # FIXME: Validate the use of 4 below
+
 loss_function = functools.partial(MCD, **{'num_class': 4, 'loss_type': 1})
 
 
@@ -217,21 +221,19 @@ class FederatedFlow(FLSpec):
                                                      prevent_shuffling=True) 
 
         print(f'Performing aggregated model validation for collaborator {self.input} on Device {self.device}')
-        params = self.gandlf_config   # load parameters from gandlf config
         self.model = self.model.to(self.device)
         assert next(self.model.parameters()).device == self.device
         self.agg_validation_score = inference(network=self.model, 
                                               test_loader=self.val_loader, 
                                               scheduler=None, 
                                               round_num=self.round_num, 
-                                              params=params)
+                                              params=self.gandlf_config)
         self.agg_test_score = inference(network=self.model, 
                                         test_loader=self.test_loader, 
                                         scheduler=None, 
                                         round_num=self.round_num, 
-                                        params=params)
-        self.params = params
-
+                                        params=self.gandlf_config)
+        
         print(f'\n{self.input} global model validation score was: {self.agg_validation_score}')
         print(f'{self.input} global model test_score was: {self.agg_test_score}\n')
         self.next(self.train)
@@ -247,29 +249,30 @@ class FederatedFlow(FLSpec):
         self.model.train()
         epochs = self.gandlf_config["num_epochs"]
 
-        # updating gandlf config
-        self.gandlf_config["model_parameters"] = model.parameters()
-        optimizer = get_optimizer(self.gandlf_config)
+        # temporarily utilizing an augmented gandlf config dictionary
+        self.augmented_gandlf_config = deepcopy(self.gandlf_config)
+        self.augmented_gandlf_config["model_parameters"] = model.parameters()
+        optimizer = get_optimizer(self.augmented_gandlf_config)
         optimizer_to_device(optimizer=optimizer, device=self.device)
-        if "optimizer_object" not in self.gandlf_config:
-            self.gandlf_config["optimizer_object"] = optimizer
-        if "scheduler" in self.gandlf_config:
-            if not ("step_size" in self.gandlf_config["scheduler"]):
-                self.gandlf_config["scheduler"]["step_size"] = (
-                    self.gandlf_config["training_samples_size"] / self.gandlf_config["learning_rate"]
+        if "optimizer_object" not in self.augmented_gandlf_config:
+            self.augmented_gandlf_config["optimizer_object"] = optimizer
+        if "scheduler" in self.augmented_gandlf_config:
+            if not ("step_size" in self.augmented_gandlf_config["scheduler"]):
+                self.augmented_gandlf_config["scheduler"]["step_size"] = (
+                    self.augmented_gandlf_config["training_samples_size"] / self.augmented_gandlf_config["learning_rate"]
                 )
-            self.scheduler = get_scheduler(self.gandlf_config)
+            self.scheduler = get_scheduler(self.augmented_gandlf_config)
         else:
             self.scheduler = None
         
 
-        # TODO: Is it ok we only take measurements from the last epoch?       
+        # Brandon TODO: Is it ok we only take measurements from the last epoch?       
         for epoch in range(epochs):
             print(f'Run {epoch} epoch of {self.round_num} round')
             epoch_train_loss, epoch_train_metric = train_network(model=self.model,
                                                                  train_dataloader=self.train_loader,
                                                                  optimizer=optimizer,
-                                                                 params=self.gandlf_config)
+                                                                 params=self.augmented_gandlf_config)
         train_metric_dict = {'loss': epoch_train_loss}
         for k, v in epoch_train_metric.items():
             train_metric_dict[f'train_{k}'] = v
@@ -302,17 +305,18 @@ class FederatedFlow(FLSpec):
                                                 test_loader=self.val_loader, 
                                                 scheduler=self.scheduler, 
                                                 round_num=self.round_num, 
-                                                params=self.gandlf_config)
+                                                params=self.augmented_gandlf_config)
         # Test dataset performance
         self.local_test_score = inference(network=self.model, 
                                                 test_loader=self.test_loader, 
                                                 scheduler=self.scheduler, 
                                                 round_num=self.round_num, 
-                                                params=self.gandlf_config)
+                                                params=self.augmented_gandlf_config)
 
         # remove val and test loader attributes
         delattr(self, 'val_loader')
         delattr(self, 'test_loader')
+        delattr(self, 'augmented_gandlf_config')
 
         print(
             (
