@@ -127,7 +127,6 @@ class FLSpec:
             f:           The next function to be executed
             parent_func: The previous function executed
         """
-        print(f"\n\nBrandon DEBUG -- inside _is_at_transition_point with f's name: {f.__name__}\n\n")
         if parent_func.__name__ in self._foreach_methods:
             self._foreach_methods.append(f.__name__)
             if should_transfer(f, parent_func):

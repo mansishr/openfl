@@ -86,9 +86,9 @@ def FedAvg(models):  # NOQA: N802
         state_dicts = [model.state_dict() for model in models]
         state_dict = new_model.state_dict()
         for key in models[1].state_dict():
-            state_dict[key] = np.sum(
+            state_dict[key] = torch.from_numpy(np.array(np.sum(
                 [state[key] for state in state_dicts], axis=0
-            ) / len(models)
+            ))) / len(models)
         new_model.load_state_dict(state_dict)
     return new_model
 
