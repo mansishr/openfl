@@ -39,7 +39,7 @@ import argparse
 import warnings
 
 # os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3,4,5"
-os.environ["CUDA_VISIBLE_DEVICES"]="0,2,3,4"
+os.environ["CUDA_VISIBLE_DEVICES"]="0,2,3,4,5,6,7,8,9"
 
 from GANDLF.parseConfig import parseConfig
 from GANDLF.compute.generic import create_pytorch_objects
@@ -601,6 +601,12 @@ if __name__ == "__main__":
         default=False,
         help="Indicate enabling of internal loop testing of Federated Flow",
     )
+    argparser.add_argument(
+        "--init_model_path",
+        type=str,
+        default=None,
+        help="The absolute path to the pretrained initial model.",
+    )
 
     args = argparser.parse_args()
 
@@ -613,7 +619,7 @@ if __name__ == "__main__":
     aggregator.private_attributes = {}
 
     # Setup collaborators with private attributes
-    collaborator_names = [str(n) for n in range(1,5)]
+    collaborator_names = [str(n) for n in range(1,24)]
     collaborators = [Collaborator(name=name) for name in collaborator_names]
     
     if torch.cuda.is_available():
@@ -694,7 +700,14 @@ if __name__ == "__main__":
 
     print(f"Local runtime collaborators = {local_runtime.collaborators}")
 
-    model = get_model(gandlf_config)   
+    model = get_model(gandlf_config) 
+
+    # If we have an initial model path, we will use it 
+    if args.init_model_path:
+        print(f"Loading a pretrained model as initial...")
+        init_checkpoint = torch.load(args.init_model_path,map_location=torch.device('cpu'))
+        model.load_state_dict(init_checkpoint['model_state_dict'])
+
     top_model_accuracy = 0
 
     """
