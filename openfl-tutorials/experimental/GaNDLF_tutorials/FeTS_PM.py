@@ -205,7 +205,7 @@ class FederatedFlow(FLSpec):
     def aggregated_model_validation(self):
 
         # save off the global model before it gets trained (will audit it later)
-        self.global_model = copy.deepcopy(self.model)
+        self.global_model = deepcopy(self.model)
 
         # Using collaborator private attributes to instantiate train, val, and test loaders
         self.train_loader, self.val_loader, self.gandlf_config = get_loaders(parameters=self.gandlf_config, 
@@ -497,13 +497,12 @@ class FederatedFlow(FLSpec):
         self.local_train_accuracy = sum(input.local_train_score['train_dice'] for input in inputs)/len(inputs)
         print(f'Average training loss = {self.average_train_loss}')
         print(f'Average local training accuracy = {self.local_train_accuracy}')
-        print(f'Average aggregared model validation loss = {self.average_aggregated_valid_loss}')
+        print(f'Average aggregated model validation loss = {self.average_aggregated_valid_loss}')
         print(f'Average aggregated model validation accuracy = {self.aggregated_valid_accuracy}')
         print(f'Average local model validation loss = {self.average_local_valid_loss}')
         print(f'Average local model validation accuracy = {self.local_valid_accuracy}')
 
         self.model = FedAvg([input.model.cpu() for input in inputs])
-        self.global_model.load_state_dict(deepcopy(self.model.state_dict()))
 
         del inputs
         self.next(self.check_round_completion)
@@ -511,14 +510,14 @@ class FederatedFlow(FLSpec):
     @aggregator
     def check_round_completion(self):
         if self.round_num != self.total_rounds:
-            if self.aggregated_model_val_accuracy > self.top_model_accuracy:
+            if self.aggregated_valid_accuracy > self.top_model_accuracy:
                 print(
                     (
                         "Validation accuracy improved to "
-                        f"{self.aggregated_model_val_accuracy} for round {self.round_num}"
+                        f"{self.aggregated_valid_accuracy} for round {self.round_num}"
                     )
                 )
-                self.top_model_accuracy = self.aggregated_model_val_accuracy
+                self.top_model_accuracy = self.aggregated_valid_accuracy
             self.round_num += 1
             print()
             print(20 * "#")
