@@ -36,7 +36,8 @@ from GANDLF.models import get_model
 from GANDLF.schedulers import get_scheduler
 from GANDLF.optimizers import get_optimizer
 import os
-os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3,4,5"
+# os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3,4,5"
+os.environ["CUDA_VISIBLE_DEVICES"]="0,2,3,4,5"
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -221,9 +222,6 @@ class FederatedFlow(FLSpec):
         self.collaborators = self.runtime.collaborators
         self.private = 10
 
-        # Brandon DEBUG
-        print(f"Brandon DEBUG at start just before next is called, FLSpec._clones are: {FLSpec._clones}")
-
         self.next(self.aggregated_model_validation, foreach='collaborators', exclude=['private'])
 
     @collaborator(num_gpus=1)
@@ -309,7 +307,10 @@ class FederatedFlow(FLSpec):
         delattr(self, 'val_loader')
         delattr(self, 'augmented_params')
 
-        print(f'{self.input} value of {self.local_validation_score}')       
+        print(f'{self.input} value of {self.local_validation_score}')
+
+        # Puting the model on cpu to clear out gpu state and avoid OOM
+        self.model.to("cpu")      
 
         self.next(self.join, exclude=['training_completed'])
 
@@ -407,12 +408,7 @@ if __name__ == '__main__':
     collaborator_names = [str(n) for n in range(1,3)]
     collaborators = [Collaborator(name=name) for name in collaborator_names]
     
-    # Brandon DEBUG
-    print(f"Brandon DEBUG: arsg: {args}")
-
     if args.gpu == 'single':
-        # Brandon DEBUG
-        print(f"Brandon DEBUG: args.gpu single and setting new value to device")
         if torch.cuda.is_available():
             device = {collaborators[i].name: torch.device(f'cuda:{args.deviceid_single}') for i in range(len(collaborator_names))}
         else:
@@ -499,7 +495,4 @@ if __name__ == '__main__':
                            total_rounds=num_of_rounds,
                            top_model_accuracy=top_model_accuracy)
     flflow.runtime = local_runtime
-    # Brandon DEBUG
-    deepcopy(flflow)
-    print("BRANDON DEBUG, deepcopied succesfully before run")
     flflow.run()

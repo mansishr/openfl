@@ -14,7 +14,8 @@ import torch.optim as optim
 import torch
 from torchio import DATA
 import numpy as np
-from openfl.experimental.interface import FLSpec, Aggregator, Collaborator
+from openfl.experimental.interface import Aggregator, Collaborator
+from local_brandon_copy_of_flspec import FLSpec
 from openfl.experimental.runtime import LocalRuntime
 from openfl.experimental.placement import aggregator, collaborator
 import torchvision.transforms as transforms
