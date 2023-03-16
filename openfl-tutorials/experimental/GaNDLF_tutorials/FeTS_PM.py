@@ -39,7 +39,7 @@ import argparse
 import warnings
 
 # os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3,4,5"
-os.environ["CUDA_VISIBLE_DEVICES"]="0,2,3,4,5"
+os.environ["CUDA_VISIBLE_DEVICES"]="0,2,3,4"
 
 from GANDLF.parseConfig import parseConfig
 from GANDLF.compute.generic import create_pytorch_objects
@@ -613,7 +613,7 @@ if __name__ == "__main__":
     aggregator.private_attributes = {}
 
     # Setup collaborators with private attributes
-    collaborator_names = [str(n) for n in range(1,3)]
+    collaborator_names = [str(n) for n in range(1,5)]
     collaborators = [Collaborator(name=name) for name in collaborator_names]
     
     if torch.cuda.is_available():
