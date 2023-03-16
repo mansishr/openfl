@@ -94,7 +94,8 @@ class GaNDLFLoaderWrapper(object):
                  csv_path = None, 
                  base_loader=None, 
                  num_attempts=num_attempts,
-                 num_subjects=num_subjects):
+                 num_subjects=num_subjects, 
+                 verbose=False):
         """
         TODO rewrite this documentation below-----
         restriction (tuple of: str, np.ndarray): First component can be 'feature', 'label', or
@@ -126,9 +127,10 @@ class GaNDLFLoaderWrapper(object):
         
         if not consistent_loader(loader=self.base_loader,
                                  num_attempts=num_attempts, 
-                                 num_subjects=num_subjects):
+                                 num_subjects=num_subjects, 
+                                 verbose=verbose):
             raise ValueError(f"Base GaNDLF loader is not deterministic and so loader wrapper will not work!")
-        else:
+        elif verbose:
             print(f"Base loader sent to GaNDLFLoaderWrapper appeared to be deterministic when tested against {num_attempts} attempts checking only channel 1 of {num_subjects} subjects.")        
 
         self.base_loader_length = len(self.base_loader)       
@@ -294,18 +296,18 @@ class GaNDLFPyTorchModel(PytorchModel):
             if idx == 0:
                 if features.shape[0] != 1:
                     raise ValueError(f"feature batch is not 1 (requirement not met in wrapped_model.get_loss)!")
-            elif labels.shape[0] != 1:
-                raise ValueError(f"label batch is not 1 (requirement not met in wrapped_model.get_loss)!")
+                elif labels.shape[0] != 1:
+                    raise ValueError(f"label batch is not 1 (requirement not met in wrapped_model.get_loss)!")
             break
 
         losses = []
 
         for features, labels in zip(restricted_feature_loader, restricted_label_loader):
             prediction = self.model_obj(features)
-            losses.append(self.loss_fn(pm=prediction, gt=labels))
+            losses.append(self.loss_fn(pm=prediction, gt=labels).expand(1))
 
         if per_point:
-            return torch.cat(losses, dim=0).detach().numpy()
+            return torch.cat(losses, dim=0).detach().cpu().numpy()
         else:
             return torch.mean(torch.Tensor(losses), dim=0)
 

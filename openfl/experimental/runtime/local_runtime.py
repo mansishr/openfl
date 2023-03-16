@@ -135,21 +135,15 @@ class LocalRuntime(Runtime):
                                (i.e. restoring aggregator state after collaborator
                                execution)
         """
-        # Brandon DEBUG
-        print(f"Brandon DEBUG: just at begining of execute_task, flspec_obj._clones: {flspec_obj._clones}")
-
-
+        
         from openfl.experimental.interface import (
             FLSpec,
             final_attributes,
         )
 
-        # Brandon cheating for now
+        # This is an addition that maybe is not needed (put here by Brandon)
         FLSpec._clones = flspec_obj._clones
 
-        # Brandon DEBUG
-        print(f"Brandon DEBUG: begining of execute_task after FLSpec is imported, flspec_obj._clones: {flspec_obj._clones}")
-        
         global final_attributes
 
         if "foreach" in kwargs:
@@ -159,7 +153,6 @@ class LocalRuntime(Runtime):
             )
 
             for col in selected_collaborators:
-                print(f"Brandon DEBUG -- keys to FLSpec._clones are: {FLSpec._clones.keys()}")
                 clone = FLSpec._clones[col]
                 if (
                     "exclude" in kwargs and hasattr(clone, kwargs["exclude"][0])
@@ -203,8 +196,6 @@ class LocalRuntime(Runtime):
                 # ensure clone is getting latest _metaflow_interface
                 clone._metaflow_interface = flspec_obj._metaflow_interface
                 if self.backend == "ray":
-                    # Brandon DEBUG
-                    print(f"\n\nBrandon DEBUG: calling ray_call_put on clone with function {f.name}\n\n")
                     ray_executor.ray_call_put(clone, to_exec)
                 else:
                     to_exec()

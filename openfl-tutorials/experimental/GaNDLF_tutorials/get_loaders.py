@@ -4,8 +4,8 @@ from torchio import DATA
 
 from modified_images_from_data_frame import ImagesFromDataFrame
 from GANDLF.utils.write_parse import get_dataframe
-from GANDLF.utils import populate_header_in_parameters, parseTrainingCSV, populate_channel_keys_in_params, get_class_imbalance_weights
-
+from GANDLF.utils import populate_header_in_parameters, parseTrainingCSV
+from GANDLF.utils import one_hot, populate_channel_keys_in_params, get_class_imbalance_weights
 
 def subject_to_feature(subject_dict, gandlf_config):
     features = torch.cat([subject_dict[key][DATA] for key in gandlf_config["channel_keys"]], 
@@ -13,8 +13,12 @@ def subject_to_feature(subject_dict, gandlf_config):
     return features
     
 def subject_to_label(subject_dict, gandlf_config):
-    print(f"Shape of label is: ", subject_dict["label"]["data"].shape)
-    return subject_dict["label"]["data"].float().to(gandlf_config["device"])
+    gt = subject_dict["label"]["data"].float().to(gandlf_config["device"])
+    if gandlf_config["problem_type"] == "segmentation":
+        gt = one_hot(gt, gandlf_config["model"]["class_list"])
+    return gt
+
+
 
 
 def get_train_loader(params, prevent_shuffling):

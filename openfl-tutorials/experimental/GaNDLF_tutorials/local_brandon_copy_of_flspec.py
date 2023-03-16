@@ -60,8 +60,6 @@ class FLSpec:
             FLSpec._reset_clones()
             FLSpec._create_clones(self, self.runtime.collaborators)
             
-            print(f"Brandon DEBUG: clones: {FLSpec._clones}")
-            
             # the start function can just be invoked locally
             if self._checkpoint:
                 print(f"Created flow {self.__class__.__name__}")
@@ -129,7 +127,6 @@ class FLSpec:
             f:           The next function to be executed
             parent_func: The previous function executed
         """
-        print(f"BRANDON DEBUG -- hello in _is_at_transition_point", parent_func.__name__, f.__name__)
         if parent_func.__name__ in self._foreach_methods:
             self._foreach_methods.append(f.__name__)
             if should_transfer(f, parent_func):
@@ -179,10 +176,6 @@ class FLSpec:
             return
 
         self._display_transition_logs(f, parent_func)
-
-        # Brandon DEBUG
-        print(f"Brandon DEBUG, inside next just before _runtime.execute_task is called, FLSpec._clones: {FLSpec._clones}")
-        print(f"parent is: {parent}")
 
         self._runtime.execute_task(
             self,

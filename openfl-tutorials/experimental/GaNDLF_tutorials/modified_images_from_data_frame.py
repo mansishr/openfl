@@ -51,8 +51,6 @@ def ImagesFromDataFrame(
         This is the output for training, which is the subjects_dataset queue after patching and data augmentation is taken into account
     """
 
-    print(f"BRANDON PRINT -- subject_to_patch_location: ", subject_to_patch_location)
-
     # store in previous variable names
     patch_size = parameters["patch_size"]
     headers = parameters["headers"]
@@ -144,7 +142,6 @@ def ImagesFromDataFrame(
             total_mass = torch.sum(patch_center_pointmass)
             if total_mass != 1.0:
                 raise ValueError(f"Problem with total mass of pointmass, has value of: ", total_mass)
-            print(f"BRANDON PRINT -- assigning a point mass that has a one in location: {(patch_center_pointmass==1).nonzero(as_tuple=True)}")         
             subject_dict["patch_center_pointmass"] = patch_center_pointmass
         skip_subject = False
         # iterating through the channels/modalities/timepoints of the subject
@@ -294,7 +291,6 @@ def ImagesFromDataFrame(
         shuffle_patches=shuffle_patches,
         verbose=q_verbose,
     )
-    print(consistent_patches, sampler)
     if consistent_patches and script_first_pass:
         for subject in DataLoader(patches_queue,batch_size=1,shuffle=False,pin_memory=False):
             top_corner_x, top_corner_y, top_corner_z, bottom_corner_x, bottom_corner_y, bottom_corner_z = tuple(torch.flatten(subject["location"]))

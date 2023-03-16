@@ -345,8 +345,7 @@ class FederatedFlow(FLSpec):
         begin_time = time.time()
 
         # Note: The train boolean here is False for all since none of these are used for training
-        
-       
+
         x_train = GaNDLFLoaderWrapper(parameters=self.gandlf_config, 
                                       train=True, 
                                       type_restrictions='feature',
@@ -432,7 +431,7 @@ class FederatedFlow(FLSpec):
         # for computing the signal_norm, it should be around 25.
         # Otherwise, one may get OOM depending on the GPU memory.
 
-        target_model = GaNDLFPyTorchModel(model_obj=copy.deepcopy(self.model), 
+        target_model = GaNDLFPyTorchModel(model_obj=copy.deepcopy(self.model).to(self.gandlf_config["device"]), 
                                           loss_fn=loss_function, 
                                           gandlf_config=self.gandlf_config)
         
@@ -445,11 +444,11 @@ class FederatedFlow(FLSpec):
         print(f"population attack for the local model uses {time.time() - start_time}")
 
         start_time = time.time()
-        target_model = GaNDLFPyTorchModel(model_obj=self.global_model, 
+        target_model = GaNDLFPyTorchModel(model_obj=self.global_model.to(self.gandlf_config["device"]), 
                                           loss_fn=loss_function, 
                                           gandlf_config=self.gandlf_config)
         self.global_pm_info = PopulationAuditor(
-            target_model, datasets, self.global_pm_info
+            target_model, target_dataset, pm_population_dataset, self.global_pm_info
         )
         self.global_pm_info.update_history("round", self.round_num)
         target_model.model_obj.to("cpu")
