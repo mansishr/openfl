@@ -171,10 +171,10 @@ def construct_PM_csvs(orig_train_csv_path,
     if final_pm_train_length != final_pm_test_length:
         raise ValueError("Final PM_train len: {final_pm_train_length} is not equal to final PM_test len: {final_pm_test_length}")
     
-    PM_train_csv_path = os.path.join(new_csv_folder, data_name + "_pm_train_w_orig_test_balance.csv") 
-    PM_test_csv_path = os.path.join(new_csv_folder, data_name + "_pm_test_w_orig_test_balance.csv") 
-    PM_pop_csv_path = os.path.join(new_csv_folder, data_name + "_pm_pop_w_orig_test_balance.csv")
-    PM_ref_csv_path = os.path.join(new_csv_folder, data_name + "_pm_ref_w_orig_train_balance.csv")
+    PM_train_csv_path = os.path.join(new_csv_folder, data_name + "_pm_train.csv") 
+    PM_test_csv_path = os.path.join(new_csv_folder, data_name + "_pm_test.csv") 
+    PM_pop_csv_path = os.path.join(new_csv_folder, data_name + "_pm_pop.csv")
+    PM_ref_csv_path = os.path.join(new_csv_folder, data_name + "_pm_ref.csv")
 
     # now shuffle the resulting dataframes once more
     PM_train = PM_train.sample(frac=1).reset_index(drop=True)
