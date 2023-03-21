@@ -638,12 +638,12 @@ if __name__ == "__main__":
         device = torch.device("cpu")
 
     for idx, collaborator in enumerate(collaborators):
-        target_train_path = os.path.join(args.csvdirpath, collaborator.name, collaborator.name + "_train.csv")
-        target_val_path = os.path.join(args.csvdirpath, collaborator.name, collaborator.name + "_val.csv")
-        target_test_path = os.path.join(args.csvdirpath, collaborator.name, collaborator.name + "_test.csv")
-        PM_train_path = os.path.join(args.csvdirpath, collaborator.name, "PM_tutorial_pm_train.csv")
-        PM_test_path = os.path.join(args.csvdirpath, collaborator.name, "PM_tutorial_pm_test.csv")
-        PM_pop_path = os.path.join(args.csvdirpath, collaborator.name, "PM_tutorial_pm_pop.csv")
+        target_train_path = os.path.join(args.csvdirpath, 'train_val_test', collaborator.name, collaborator.name + "_train.csv")
+        target_val_path = os.path.join(args.csvdirpath, 'train_val_test', collaborator.name, collaborator.name + "_val.csv")
+        target_test_path = os.path.join(args.csvdirpath, 'train_val_test', collaborator.name, collaborator.name + "_test.csv")
+        PM_train_path = os.path.join(args.csvdirpath, 'PM_train_test_pop', collaborator.name, "PM_tutorial_pm_train.csv")
+        PM_test_path = os.path.join(args.csvdirpath, 'PM_train_test_pop', collaborator.name, "PM_tutorial_pm_test.csv")
+        PM_pop_path = os.path.join(args.csvdirpath, 'PM_train_test_pop', collaborator.name, "PM_tutorial_pm_pop.csv")
 
 
         # initialize pm report to track the privacy loss during the training
