@@ -35,19 +35,22 @@ def get_model_info(parameters, loss_function):
     
     return model_class, loss_function_w_reduction, loss_function_wo_reduction  
 
-def consistent_loader(loader, num_attempts, num_subjects, verbose=False):
+def consistent_loader(loader, num_attempts, num_subjects, gandlf_config, verbose=False):
     chnl1_tensors = []
     subject_ids = []
-
     all_equal = True
+
+    channel_key = gandlf_config["channel_keys"][0]
 
     for a_idx, attempt in enumerate(range(num_attempts+1)):
         if a_idx == 0:
             for s_idx, subject in enumerate(loader):
+                if s_idx == 0:
+                    ex_channel_key = subject
                 if s_idx == num_subjects:
                     break
                 else:
-                    chnl1_tensors.append(subject['channel_1']['data'])
+                    chnl1_tensors.append(subject[channel_key]['data'])
                     subject_ids.append(subject['subject_id'])
         else:
             if verbose:
@@ -57,11 +60,11 @@ def consistent_loader(loader, num_attempts, num_subjects, verbose=False):
                 if s_idx == num_subjects:
                     break
                 else:
-                    if not torch.equal(chnl1_tensors[s_idx], subject['channel_1']['data']) or subject_ids[s_idx] != subject['subject_id']:
+                    if not torch.equal(chnl1_tensors[s_idx], subject[channel_key]['data']) or subject_ids[s_idx] != subject['subject_id']:
                         if verbose:
-                            tensor_diff_idxs = ~(chnl1_tensors[s_idx] == subject['channel_1']['data'])
+                            tensor_diff_idxs = ~(chnl1_tensors[s_idx] == subject[channel_key]['data'])
                             first_time = chnl1_tensors[s_idx][tensor_diff_idxs]
-                            second_time = subject['channel_1']['data'][tensor_diff_idxs]
+                            second_time = subject[channel_key]['data'][tensor_diff_idxs]
                             print(f"\nGot a difference in what loader produced:")
                             print("--- Subjects ---")
                             print(f"FIRST TIME: {subject_ids[s_idx]}")
@@ -128,7 +131,8 @@ class GaNDLFLoaderWrapper(object):
         if not consistent_loader(loader=self.base_loader,
                                  num_attempts=num_attempts, 
                                  num_subjects=num_subjects, 
-                                 verbose=verbose):
+                                 verbose=verbose, 
+                                 gandlf_config=parameters):
             raise ValueError(f"Base GaNDLF loader is not deterministic and so loader wrapper will not work!")
         elif verbose:
             print(f"Base loader sent to GaNDLFLoaderWrapper appeared to be deterministic when tested against {num_attempts} attempts checking only channel 1 of {num_subjects} subjects.")        
