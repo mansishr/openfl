@@ -47,7 +47,7 @@ def consistent_loader(loader, num_attempts, num_subjects, verbose=False):
                 if s_idx == num_subjects:
                     break
                 else:
-                    chnl1_tensors.append(subject['1']['data'])
+                    chnl1_tensors.append(subject['channel_1']['data'])
                     subject_ids.append(subject['subject_id'])
         else:
             if verbose:
@@ -57,11 +57,11 @@ def consistent_loader(loader, num_attempts, num_subjects, verbose=False):
                 if s_idx == num_subjects:
                     break
                 else:
-                    if not torch.equal(chnl1_tensors[s_idx], subject['1']['data']) or subject_ids[s_idx] != subject['subject_id']:
+                    if not torch.equal(chnl1_tensors[s_idx], subject['channel_1']['data']) or subject_ids[s_idx] != subject['subject_id']:
                         if verbose:
-                            tensor_diff_idxs = ~(chnl1_tensors[s_idx] == subject['1']['data'])
+                            tensor_diff_idxs = ~(chnl1_tensors[s_idx] == subject['channel_1']['data'])
                             first_time = chnl1_tensors[s_idx][tensor_diff_idxs]
-                            second_time = subject['1']['data'][tensor_diff_idxs]
+                            second_time = subject['channel_1']['data'][tensor_diff_idxs]
                             print(f"\nGot a difference in what loader produced:")
                             print("--- Subjects ---")
                             print(f"FIRST TIME: {subject_ids[s_idx]}")
