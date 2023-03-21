@@ -117,23 +117,25 @@ def train_val_test_split(subdirs,
     def validate_portions(split, 
                           remains, 
                           total, 
-                          leave, 
+                          leave,
+                          take, 
                           portion):
         """
         Sanity checks used to ensure take_portion_leave_some function does what is intended
         """
 
-        # if we we left only the minimal number of samples, was this necessary
-        if len(remains) == leave:
-            if (int(portion * len(total)) + leave + 1 <= len(total)):
-                raise ValueError(f"Something is wrong, {len(split)} were split off during take_portion_... which were not enough.") 
-        # if we were able to leave more than minimum, split should be close to correct size
-        elif abs(portion * len(total) - len(split)) > 1:
-            raise ValueError(f"Split during take_portion_... targeted pulling off {portion * len(total)} samples and took {len(split)} instead, off by more than 1 which is unexpected since more could have been taken given the value of leave.")
-        
-        # Split must have at least one element, and remains must have at least -leave- elements
-        if len(split) == 0:
-            raise ValueError(f"List split off during take_portion_... must have at least one element.")
+        # if we are off by more than one sample away from target split length then it should make sense
+        if len(split) <= portion * len(total) - 1:
+            if (1 - portion) * len(total) > leave: 
+                raise ValueError(f"You took much less than portion, but leave was small enough to not require this.")
+        if len(split) > portion * len(total) + 1:
+            if portion * len(total) > take:
+                raise ValueError(f"You took more than portion, but take was small enough to not require this.")
+       
+
+        # Split must have at least -take- elements, and remains must have at least -leave- elements
+        if len(split) < take:
+            raise ValueError(f"At least {take} samples should have landed in split but only {len(split)} did.")
         if len(remains) < leave:
             raise ValueError(f"Remains of split during take_portion_... must have at least leave={leave} number of elements and it has {len(remains)} instead.")
         
@@ -149,42 +151,45 @@ def train_val_test_split(subdirs,
 
     def take_portion_leave_some(total_list, 
                                 portion, 
-                                leave, 
+                                leave=1,
+                                take=1, 
                                 shuffle=True):
         """
         Take a -portion- (float strickly between 0 and 1) of -total_list- and return that and the
-        ramains of the list. Make sure that at least one entry from -total_list- is taken and
-        make sure that -leave- number of samples sit in the remains. If any of this is not possible
-        throw an exception.
+        ramains of the list. Make sure that at least -take- entries from -total_list- are taken and
+        make sure that at least -leave- number of samples sit in the remains. 
+        Both -take- and -leave- must be greater than zero. The -portion- requirement should
+        be satified to the degree it can after satisfying -take- and -leave-.If either of -take- 
+        or -leave- is not possible to perform then throw an exception.
         """
 
         if portion <= 0.0 or portion >= 1.0:
             raise ValueError(f"portion must be strictly between 0.0 and 1.0")
-        if leave < 0:
-            raise ValueError(f"leave must be non-negative")
+        if (leave < 1) or (take < 1):
+            raise ValueError(f"leave and take must be greater than zero")
 
         if shuffle:
             np.random.shuffle(total_list)
         n_entries = len(total_list)
-        if n_entries  - 1 < leave:
-            raise ValueError(f"A list of {n_entries} entries was provided, to split off at least one but leave {leave}. This is not possible.")
+        if n_entries  < leave + take:
+            raise ValueError(f"A list of {n_entries} entries was provided, to split off at least {take} with at least {leave} left over. This is not possible.")
         
-        cutpoint = int(n_entries * portion)
-        # adjust to acomodate requirements
-        if cutpoint == 0:
-            cutpoint = 1
-        if n_entries - cutpoint < leave:
-            cutpoint = n_entries - leave
-            if cutpoint < 1:
-                raise ValueError(f"Unexpected result, go in and redo the math where this code lies.")
+        split = total_list[:take]
+        remains = total_list[take: take+leave]
+        additional_entries = total_list[take+leave:]
 
-        split = total_list[:cutpoint]
-        remains = total_list[cutpoint:]
+        if len(additional_entries) > 0:
+            cutpoint = int(n_entries * portion) - take
+            split_more = additional_entries[:cutpoint]
+            remains_more = additional_entries[cutpoint:]
+            split = split + split_more
+            remains = remains + remains_more
 
         validate_portions(split=split, 
                         remains=remains, 
                         total=total_list, 
-                        leave=leave, 
+                        leave=leave,
+                        take=take, 
                         portion=portion)
 
         return split, remains
@@ -210,16 +215,18 @@ def train_val_test_split(subdirs,
 
     n_trainvaltest = len(wanted_subdirs)
 
-    if n_trainvaltest < 3:
-        raise ValueError(f"At least three samples must remain after removing samples used to train the initial model.")
+    if n_trainvaltest < 4:
+        raise ValueError(f"At least four samples must remain after removing samples used to train the initial model.")
     
     train_subdirs, valtest_subdirs = take_portion_leave_some(total_list=wanted_subdirs, 
-                                                             portion=percent_train, 
-                                                             leave=2)
+                                                             portion=percent_train,
+                                                             take=1, 
+                                                             leave=3)
     
     val_subdirs, test_subdirs = take_portion_leave_some(total_list=valtest_subdirs, 
                                                         portion=percent_val/(percent_val+percent_test), 
-                                                        leave=1)
+                                                        take=1, 
+                                                        leave=2)
 
     if shuffle:
         np.random.shuffle(train_subdirs)

@@ -1,6 +1,6 @@
 import argparse, os
 
-from privacy_meter_constructCSVs_watch_subject_IDs import construct_PM_csvs
+from PM_construct_csvs_for_segmentation import construct_PM_csvs
 
 # hard coded choices
 orig_test_portion_to_pop = 0.5  
@@ -50,12 +50,12 @@ if __name__ == '__main__':
 
 
 
-    construct_PM_csvs(orig_train_csv_path, 
-                      orig_val_csv_path, 
-                      orig_test_csv_path, 
-                      new_csv_folder, 
-                      data_name, 
-                      orig_test_portion_to_pop)
+        construct_PM_csvs(orig_train_csv_path=orig_train_csv_path, 
+                          orig_val_csv_path=orig_val_csv_path, 
+                          orig_test_csv_path=orig_test_csv_path, 
+                          new_csv_folder=new_csv_folder, 
+                          data_name=data_name, 
+                          orig_test_portion_to_pop=orig_test_portion_to_pop)
 
 
 

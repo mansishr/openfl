@@ -74,21 +74,22 @@ log_interval = 10
 loss_function = functools.partial(MCD, **{'num_class': 4, 'loss_type': 1})
 
 
-def FedAvg(models):  # NOQA: N802
+def FedAvg(models, train_weights):  # NOQA: N802
     """
     Computes the non-weighted average of collaborator models
 
     Args:
         models: Python list of locally trained models by each collaborator
     """
+    if len(models) != len(train_weights):
+        raise ValueError(f"Asked to average {len(models)} models whith {len(train_weights)} weights.")
     new_model = models[0]
     if len(models) > 1:
         state_dicts = [model.state_dict() for model in models]
         state_dict = new_model.state_dict()
         for key in models[1].state_dict():
-            state_dict[key] = torch.from_numpy(np.array(np.sum(
-                [state[key] for state in state_dicts], axis=0
-            ))) / len(models)
+            state_dict[key] = torch.from_numpy(np.average(np.concatenate(
+                [np.expand_dims(state[key], axis=0) for state in state_dicts], axis=0), axis=0, weights=train_weights))
         new_model.load_state_dict(state_dict)
     return new_model
 
@@ -212,30 +213,32 @@ class FederatedFlow(FLSpec):
                                                          prevent_shuffling=False, 
                                                          train_csv_path=self.target_train_path, 
                                                          val_csv_path=self.target_train_path)
-
-
      
         self.test_loader, _ = get_single_loader(parameters=self.gandlf_config, 
                                                      train=False, 
                                                      csv_path=self.target_test_path, 
                                                      prevent_shuffling=True) 
+        
+        self.train_weight = len(self.train_loader)
+        self.val_weight = len(self.val_loader)
+        self.test_weight = len(self.test_loader)
 
         print(f'Performing aggregated model validation for collaborator {self.input} on Device {self.device}')
         self.model = self.model.to(self.device)
         assert next(self.model.parameters()).device == self.device
-        self.agg_validation_score = inference(network=self.model, 
+        self.global_val_score = inference(network=self.model, 
                                               test_loader=self.val_loader, 
                                               scheduler=None, 
                                               round_num=self.round_num, 
                                               params=self.gandlf_config)
-        self.agg_test_score = inference(network=self.model, 
+        self.global_test_score = inference(network=self.model, 
                                         test_loader=self.test_loader, 
                                         scheduler=None, 
                                         round_num=self.round_num, 
                                         params=self.gandlf_config)
         
-        print(f'\n{self.input} global model validation score was: {self.agg_validation_score}')
-        print(f'{self.input} global model test_score was: {self.agg_test_score}\n')
+        print(f'\n{self.input} global model validation score was: {self.global_val_score}')
+        print(f'{self.input} global model test_score was: {self.global_test_score}\n')
         self.next(self.train)
 
     # @collaborator  # Uncomment if you want ro run on CPU
@@ -266,8 +269,9 @@ class FederatedFlow(FLSpec):
             self.scheduler = None
         
 
-        # Brandon TODO: Is it ok we only take measurements from the last epoch?       
         for epoch in range(epochs):
+            if epochs != 1.0:
+                raise ValueError(f"Can remove this error, but wanted it to be clear only the last epoch is providing loss values.")
             print(f'Run {epoch} epoch of {self.round_num} round')
             epoch_train_loss, epoch_train_metric = train_network(model=self.model,
                                                                  train_dataloader=self.train_loader,
@@ -276,8 +280,8 @@ class FederatedFlow(FLSpec):
         train_metric_dict = {'loss': epoch_train_loss}
         for k, v in epoch_train_metric.items():
             train_metric_dict[f'train_{k}'] = v
-        self.local_train_score = train_metric_dict
-        print(f'{self.input} value of {self.local_train_score}')
+        self.local_train_dict = train_metric_dict
+        print(f'{self.input} value of {self.local_train_dict}')
 
         delattr(self, 'train_loader')
     
@@ -301,7 +305,7 @@ class FederatedFlow(FLSpec):
         start_time = time.time()
 
         # Val dataset performance
-        self.local_validation_score = inference(network=self.model, 
+        self.local_val_score = inference(network=self.model, 
                                                 test_loader=self.val_loader, 
                                                 scheduler=self.scheduler, 
                                                 round_num=self.round_num, 
@@ -321,7 +325,7 @@ class FederatedFlow(FLSpec):
         print(
             (
                 "Doing local model validation for collaborator: "
-                f"{self.input} validation: {self.local_validation_score}"
+                f"{self.input} validation: {self.local_val_score}"
                 f"{self.input} test: {self.local_test_score}"
             )
         )
@@ -489,20 +493,24 @@ class FederatedFlow(FLSpec):
 
     @aggregator
     def join(self, inputs):
-        self.average_train_loss = sum(input.local_train_score['loss'] for input in inputs)/len(inputs)
-        self.average_aggregated_valid_loss = sum(input.agg_validation_score['loss'] for input in inputs)/len(inputs)
-        self.average_local_valid_loss = sum(input.local_validation_score['loss'] for input in inputs)/len(inputs)
-        self.aggregated_valid_accuracy = sum(input.agg_validation_score['valid_dice'] for input in inputs)/len(inputs)
-        self.local_valid_accuracy = sum(input.local_validation_score['valid_dice'] for input in inputs)/len(inputs)
-        self.local_train_accuracy = sum(input.local_train_score['train_dice'] for input in inputs)/len(inputs)
-        print(f'Average training loss = {self.average_train_loss}')
-        print(f'Average local training accuracy = {self.local_train_accuracy}')
-        print(f'Average aggregated model validation loss = {self.average_aggregated_valid_loss}')
-        print(f'Average aggregated model validation accuracy = {self.aggregated_valid_accuracy}')
-        print(f'Average local model validation loss = {self.average_local_valid_loss}')
-        print(f'Average local model validation accuracy = {self.local_valid_accuracy}')
+        train_weights = np.array([input.train_weight for input in inputs])
+        val_weights = np.array([input.val_weight for input in inputs])
+        test_weights = np.array([input.test_weight for input in inputs])
+        
+        self.fed_local_loss = np.average([input.local_train_dict['loss'] for input in inputs], weights=train_weights)
+        self.fed_local_val = np.average([input.local_val_score for input in inputs], weights=val_weights)
+        self.fed_local_test = np.average([input.local_test_score for input in inputs], weights=test_weights)
+        
+        self.fed_global_val = np.average([input.global_val_score for input in inputs], weights=val_weights)
+        self.fed_global_test = np.average([input.global_test_score for input in inputs], weights=test_weights)
+        
+        print(f'Average training loss = {self.fed_local_loss}')
+        print(f'Global model validation DICE = {self.fed_global_val}')
+        print(f'Global model test DICE = {self.fed_global_test}')
+        print(f'Local model validation DICE = {self.fed_local_val}')
+        print(f'Local model test DICE = {self.fed_local_test}')
 
-        self.model = FedAvg([input.model.cpu() for input in inputs])
+        self.model = FedAvg([input.model.cpu() for input in inputs], train_weights)
 
         del inputs
         self.next(self.check_round_completion)
