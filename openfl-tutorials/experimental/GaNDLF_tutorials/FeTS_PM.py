@@ -39,7 +39,7 @@ import argparse
 import warnings
 
 # os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3,4,5"
-os.environ["CUDA_VISIBLE_DEVICES"]="0,2,3,4,5,6,7,8,9"
+os.environ["CUDA_VISIBLE_DEVICES"]="0,3,4,5,6,7,8,9"
 
 from GANDLF.parseConfig import parseConfig
 from GANDLF.compute.generic import create_pytorch_objects
@@ -173,6 +173,7 @@ class FederatedFlow(FLSpec):
         device="cpu",
         total_rounds=10,
         top_model_accuracy=0,
+        verbose=False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -183,6 +184,7 @@ class FederatedFlow(FLSpec):
         self.round_num = 0  # starting round
         self.gandlf_config=gandlf_config
         self.gandlf_config["device"] = self.device
+        self.verbose = verbose
 
         print(20 * "#")
         print(f"Round {self.round_num}...")
@@ -358,42 +360,48 @@ class FederatedFlow(FLSpec):
                                       type_restrictions='feature',
                                       subject_to_feature=functools.partial(subject_to_feature, **{'gandlf_config': self.gandlf_config}), 
                                       subject_to_label=functools.partial(subject_to_label, **{'gandlf_config': self.gandlf_config}),
-                                      csv_path=self.PM_train_path)
+                                      csv_path=self.PM_train_path, 
+                                      verbose=self.verbose)
 
         y_train = GaNDLFLoaderWrapper(parameters=self.gandlf_config, 
                                       train=True, 
                                       type_restrictions='label',
                                       subject_to_feature=functools.partial(subject_to_feature, **{'gandlf_config': self.gandlf_config}), 
                                       subject_to_label=functools.partial(subject_to_label, **{'gandlf_config': self.gandlf_config}),
-                                      csv_path=self.PM_train_path)
+                                      csv_path=self.PM_train_path, 
+                                      verbose=self.verbose)
 
         x_test = GaNDLFLoaderWrapper(parameters=self.gandlf_config, 
                                       train=True, 
                                       type_restrictions='feature',
                                       subject_to_feature=functools.partial(subject_to_feature, **{'gandlf_config': self.gandlf_config}), 
                                       subject_to_label=functools.partial(subject_to_label, **{'gandlf_config': self.gandlf_config}),
-                                      csv_path=self.PM_test_path)
+                                      csv_path=self.PM_test_path, 
+                                      verbose=self.verbose)
 
         y_test = GaNDLFLoaderWrapper(parameters=self.gandlf_config, 
                                       train=True, 
                                       type_restrictions='label',
                                       subject_to_feature=functools.partial(subject_to_feature, **{'gandlf_config': self.gandlf_config}), 
                                       subject_to_label=functools.partial(subject_to_label, **{'gandlf_config': self.gandlf_config}),
-                                      csv_path=self.PM_test_path)
+                                      csv_path=self.PM_test_path, 
+                                      verbose=self.verbose)
 
         x_pop = GaNDLFLoaderWrapper(parameters=self.gandlf_config, 
                                       train=True, 
                                       type_restrictions='feature',
                                       subject_to_feature=functools.partial(subject_to_feature, **{'gandlf_config': self.gandlf_config}), 
                                       subject_to_label=functools.partial(subject_to_label, **{'gandlf_config': self.gandlf_config}),
-                                      csv_path=self.PM_pop_path)
+                                      csv_path=self.PM_pop_path, 
+                                      verbose=self.verbose)
 
         y_pop = GaNDLFLoaderWrapper(parameters=self.gandlf_config, 
                                       train=True, 
                                       type_restrictions='label',
                                       subject_to_feature=functools.partial(subject_to_feature, **{'gandlf_config': self.gandlf_config}), 
                                       subject_to_label=functools.partial(subject_to_label, **{'gandlf_config': self.gandlf_config}),
-                                      csv_path=self.PM_pop_path)
+                                      csv_path=self.PM_pop_path, 
+                                      verbose=self.verbose)
   
 
         # The 'g' attribute defines the groups within which thresholds are computed independently
@@ -474,7 +482,7 @@ class FederatedFlow(FLSpec):
         plot_roc_history(history_dict, self.input)
 
         # save the privacy report
-        saving_path = f"{self.local_pm_info.log_dir}/{self.input}.pkl"
+        saving_path = f"{self.local_pm_info.log_dir}/col_{self.input}_history_dict.pkl"
         Path(self.local_pm_info.log_dir).mkdir(parents=True, exist_ok=True)
         with open(saving_path, "wb") as handle:
             pickle.dump(history_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -615,6 +623,11 @@ if __name__ == "__main__":
         default=None,
         help="The absolute path to the pretrained initial model.",
     )
+    argparser.add_argument(
+        "--verbose",
+        action='store_true',
+        help="The absolute path to the pretrained initial model.",
+    )
 
     args = argparser.parse_args()
 
@@ -732,6 +745,7 @@ if __name__ == "__main__":
         device=device,
         total_rounds=args.comm_round,
         top_model_accuracy=top_model_accuracy,
+        verbose=args.verbose
     )
 
     flflow.runtime = local_runtime

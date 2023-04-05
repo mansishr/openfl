@@ -47,8 +47,8 @@ def consistent_loader(loader, num_attempts, num_subjects, gandlf_config, verbose
             for s_idx, subject in enumerate(loader):
                 if s_idx == 0:
                     ex_channel_key = subject
-                if s_idx == num_subjects:
-                    break
+                if s_idx >= num_subjects:
+                    continue
                 else:
                     chnl1_tensors.append(subject[channel_key]['data'])
                     subject_ids.append(subject['subject_id'])
@@ -57,8 +57,8 @@ def consistent_loader(loader, num_attempts, num_subjects, gandlf_config, verbose
                 print(f"Comparing one run of base loader with another...attempt={a_idx+1}")
             equal = True
             for s_idx, subject in enumerate(loader):
-                if s_idx == num_subjects:
-                    break
+                if s_idx >= num_subjects:
+                    continue
                 else:
                     if not torch.equal(chnl1_tensors[s_idx], subject[channel_key]['data']) or subject_ids[s_idx] != subject['subject_id']:
                         if verbose:
@@ -72,6 +72,7 @@ def consistent_loader(loader, num_attempts, num_subjects, gandlf_config, verbose
                             print("--- Part Tensors ---")
                             print(f"FIRST TIME: {first_time}")
                             print(f"SECOND TIME: {second_time}\n\n")
+                            print(f"DIFFERENCE: {first_time-second_time}")
                         equal = False
             if not equal: 
                 all_equal = False
