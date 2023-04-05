@@ -64,7 +64,10 @@ def get_validation_loader(params, prevent_shuffling):
         loader_type="validation",
         prevent_shuffling=prevent_shuffling
     )
-    
+    # Fetch the appropriate channel keys
+    # Getting the channels for training and removing all the non numeric entries from the channels
+    params = populate_channel_keys_in_params(queue_from_dataframe, params)
+
     return DataLoader(
         queue_from_dataframe,
         batch_size=1,
