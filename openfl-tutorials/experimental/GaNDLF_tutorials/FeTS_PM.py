@@ -227,7 +227,7 @@ class FederatedFlow(FLSpec):
         self.test_weight = len(self.test_loader)
 
         print(f'Performing aggregated model validation for collaborator {self.input} on Device {self.device}')
-        self.model = self.model.to(self.device)
+        self.model.to(self.device)
         assert next(self.model.parameters()).device == self.device
         self.global_val_score = inference(network=self.model, 
                                               test_loader=self.val_loader, 
@@ -239,6 +239,7 @@ class FederatedFlow(FLSpec):
                                         scheduler=None, 
                                         round_num=self.round_num, 
                                         params=self.gandlf_config)
+        self.model.to("cpu")
         
         print(f'\n{self.input} global model validation score was: {self.global_val_score}')
         print(f'{self.input} global model test_score was: {self.global_test_score}\n')
@@ -253,6 +254,8 @@ class FederatedFlow(FLSpec):
         )
 
         epochs = self.gandlf_config["num_epochs"]
+
+        self.model.to(self.device)
 
         # temporarily utilizing an augmented gandlf config dictionary
         self.augmented_gandlf_config = deepcopy(self.gandlf_config)
@@ -288,6 +291,7 @@ class FederatedFlow(FLSpec):
         delattr(self, 'train_loader')
     
         self.training_completed = True
+        self.model.to("cpu")
 
         # sanity check that model and global model have diverted (rather than training on one reflecting in the other)
         if models_equal(model_1=self.model, model_2 = self.global_model):
@@ -305,6 +309,7 @@ class FederatedFlow(FLSpec):
             )
         )
         start_time = time.time()
+        self.model.to(self.device)
 
         # Val dataset performance
         self.local_val_score = inference(network=self.model, 
