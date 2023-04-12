@@ -308,7 +308,9 @@ class GaNDLFPyTorchModel(PytorchModel):
         losses = []
 
         for features, labels in zip(restricted_feature_loader, restricted_label_loader):
-            prediction = self.model_obj(features)
+            with torch.no_grad():
+                prediction = self.model_obj(features).to('cpu')
+            labels = labels.to('cpu')
             losses.append(self.loss_fn(pm=prediction, gt=labels).expand(1))
 
         if per_point:

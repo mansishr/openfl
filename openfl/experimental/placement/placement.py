@@ -18,8 +18,6 @@ class RayExecutor:
         self.remote_contexts = []
 
     def ray_call_put(self, ctx, func):
-        # Brandon DEBUG
-        print(f"\n\nBrandon DEBUG: ray_call_put on ctx: {ctx} and func: {func}\n\n")
         remote_to_exec = make_remote(func, num_gpus=func.num_gpus)
         ref_ctx = ray.put(ctx)
         self.remote_contexts.append(ref_ctx)
@@ -30,10 +28,8 @@ class RayExecutor:
     def get_remote_clones(self):
         clones = deepcopy(ray.get(self.remote_functions))
 
-        # Brandon debug
         rfts = [type(fun) for fun in self.remote_functions]
-        print(f"\n###################\nRemote functions are of type: {rfts}\n\n")
-
+        
         del self.remote_functions
         # Remove clones from ray object store
         for ctx in self.remote_contexts:
@@ -49,8 +45,6 @@ def make_remote(f: Callable, num_gpus: int) -> Callable:
     Args:
         num_gpus: Defines the number of GPUs to request for a task
     """
-
-    print(f"\n################\nBrandon DEBUG: making remote (wrapping) function: {f}\n################\n")
 
     f = ray.put(f)
 

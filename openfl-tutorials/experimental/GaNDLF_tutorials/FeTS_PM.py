@@ -38,8 +38,8 @@ import os
 import argparse
 import warnings
 
-# os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3,4,5"
-os.environ["CUDA_VISIBLE_DEVICES"]="0,3,4,5,6,7,8,9"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5"
+os.environ["CUDA_VISIBLE_DEVICES"] = "3,4,5,6,7,8"
 
 from GANDLF.parseConfig import parseConfig
 from GANDLF.compute.generic import create_pytorch_objects
@@ -63,7 +63,6 @@ num_attempts = 5
 num_subjects = 5
 
 batch_size_train = 32
-batch_size_test = 1000
 learning_rate = 0.005
 momentum = 0.9
 log_interval = 10
@@ -88,8 +87,10 @@ def FedAvg(models, train_weights):  # NOQA: N802
         state_dicts = [model.state_dict() for model in models]
         state_dict = new_model.state_dict()
         for key in models[1].state_dict():
-            state_dict[key] = torch.from_numpy(np.average(np.concatenate(
-                [np.expand_dims(state[key], axis=0) for state in state_dicts], axis=0), axis=0, weights=train_weights))
+            expanded_states = [np.expand_dims(np.array(state[key]), axis=0) for state in state_dicts]
+            concatenated_states = np.concatenate(expanded_states, axis=0)
+            averaged_states = np.average(concatenated_states, axis=0, weights=train_weights)
+            state_dict[key] = torch.from_numpy(np.array(averaged_states))
         new_model.load_state_dict(state_dict)
     return new_model
 
@@ -251,7 +252,6 @@ class FederatedFlow(FLSpec):
             f"Performing model training for collaborator {self.input} in round {self.round_num}"
         )
 
-        self.model.train()
         epochs = self.gandlf_config["num_epochs"]
 
         # temporarily utilizing an augmented gandlf config dictionary
@@ -332,6 +332,8 @@ class FederatedFlow(FLSpec):
             )
         )
         print(f"local validation time cost {(time.time() - start_time)}")
+
+        self.model.to('cpu')
 
         if (
             self.round_num == 0
@@ -504,13 +506,19 @@ class FederatedFlow(FLSpec):
         train_weights = np.array([input.train_weight for input in inputs])
         val_weights = np.array([input.val_weight for input in inputs])
         test_weights = np.array([input.test_weight for input in inputs])
+
+        # Brandon DEBUG
+        print(f"input.local_train_dict['loss'] for input.....: {[input.local_train_dict['loss'] for input in inputs]}")
+        print(f"input.local_val_score for input.... {[input.local_val_score for input in inputs]}")
+        print(f"input.local_test_score for input.... {[input.local_test_score for input in inputs]}")
+        
         
         self.fed_local_loss = np.average([input.local_train_dict['loss'] for input in inputs], weights=train_weights)
-        self.fed_local_val = np.average([input.local_val_score for input in inputs], weights=val_weights)
-        self.fed_local_test = np.average([input.local_test_score for input in inputs], weights=test_weights)
+        self.fed_local_val = np.average([input.local_val_score['valid_dice'] for input in inputs], weights=val_weights)
+        self.fed_local_test = np.average([input.local_test_score['valid_dice'] for input in inputs], weights=test_weights)
         
-        self.fed_global_val = np.average([input.global_val_score for input in inputs], weights=val_weights)
-        self.fed_global_test = np.average([input.global_test_score for input in inputs], weights=test_weights)
+        self.fed_global_val = np.average([input.global_val_score['valid_dice'] for input in inputs], weights=val_weights)
+        self.fed_global_test = np.average([input.global_test_score['valid_dice'] for input in inputs], weights=test_weights)
         
         print(f'Average training loss = {self.fed_local_loss}')
         print(f'Global model validation DICE = {self.fed_global_val}')
@@ -526,14 +534,14 @@ class FederatedFlow(FLSpec):
     @aggregator
     def check_round_completion(self):
         if self.round_num != self.total_rounds:
-            if self.aggregated_valid_accuracy > self.top_model_accuracy:
+            if self.fed_global_val > self.top_model_accuracy:
                 print(
                     (
                         "Validation accuracy improved to "
-                        f"{self.aggregated_valid_accuracy} for round {self.round_num}"
+                        f"{self.fed_global_val} for round {self.round_num}"
                     )
                 )
-                self.top_model_accuracy = self.aggregated_valid_accuracy
+                self.top_model_accuracy = self.fed_global_val
             self.round_num += 1
             print()
             print(20 * "#")
@@ -640,6 +648,7 @@ if __name__ == "__main__":
     aggregator.private_attributes = {}
 
     # Setup collaborators with private attributes
+    # collaborator_names = ['2', '17']
     collaborator_names = [str(n) for n in range(1,24)]
     collaborators = [Collaborator(name=name) for name in collaborator_names]
     
