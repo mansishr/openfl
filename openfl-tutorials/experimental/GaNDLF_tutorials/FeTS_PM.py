@@ -38,8 +38,13 @@ import os
 import argparse
 import warnings
 
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5"
-os.environ["CUDA_VISIBLE_DEVICES"] = "3,4,5,6,7,8"
+# visible_gpus = "0,1,2,3,4,5"
+visible_gpus = "1,2,3,4,5,7,8,9"
+os.environ["CUDA_VISIBLE_DEVICES"] = visible_gpus
+
+total_visible_gpus = len(visible_gpus.split(','))
+                         
+print(f"Total number of gpus visible to the tutorial is: {total_visible_gpus}\n")
 
 from GANDLF.parseConfig import parseConfig
 from GANDLF.compute.generic import create_pytorch_objects
