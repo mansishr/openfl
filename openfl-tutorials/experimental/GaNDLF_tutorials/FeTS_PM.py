@@ -437,20 +437,7 @@ class FederatedFlow(FLSpec):
                                         default_input='x', 
                                         default_output='y')
 
-        """
-        datasets = Dataset(data_dict=datasets,
-                           default_input='x',
-                           default_output='y')
-        """
 
-        """
-        This is what was used here previously-----
-        datasets = {
-            "train": self.train_dataset,
-            "test": self.test_dataset,
-            "audit": self.population_dataset,
-        }
-        """
         
         start_time = time.time()
         # batch_size for the PytorchModelTensor indicates batch size for computing the signals.
@@ -458,7 +445,7 @@ class FederatedFlow(FLSpec):
         # for computing the signal_norm, it should be around 25.
         # Otherwise, one may get OOM depending on the GPU memory.
 
-        target_model = GaNDLFPyTorchModel(model_obj=copy.deepcopy(self.model).to(self.gandlf_config["device"]), 
+        target_model = GaNDLFPyTorchModel(model_obj=self.model.to(self.gandlf_config["device"]), 
                                           loss_fn=loss_function, 
                                           gandlf_config=self.gandlf_config)
         
@@ -500,15 +487,7 @@ class FederatedFlow(FLSpec):
             pickle.dump(history_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
         print(f"auditing time: {time.time() - begin_time}")
 
-        """
-        TODO: Do we need to clean up anything here?
-        # Clean up state before transitioning to collaborator
-        delattr(self, "train_dataset")
-        delattr(self, "train_loader")
-        delattr(self, "test_dataset")
-        delattr(self, "test_loader")
-        delattr(self, "population_dataset")
-        """
+
         self.next(self.join, exclude=["training_completed"])
 
     @aggregator
