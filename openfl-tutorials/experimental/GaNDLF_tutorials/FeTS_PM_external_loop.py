@@ -209,7 +209,7 @@ class FederatedFlow(FLSpec):
     # @collaborator  # Uncomment if you want ro run on CPU
     @collaborator(num_gpus=1)  # Assuming GPU(s) is available in the machine
     def aggregated_model_validation(self):
-
+        testing = self.input
         # save off the global model before it gets trained (will audit it later)
         self.global_model = deepcopy(self.model)
 
@@ -477,10 +477,15 @@ class FederatedFlow(FLSpec):
         plot_auc_history(history_dict, self.input)
         plot_roc_history(history_dict, self.input)
 
+        # convert history dict to standard python objects so unpickling does not require additional context
+        print("\n########################################################")
+        print(self.local_pm_info.__dir__())
+        print("########################################################\n")
+
         # save the privacy report
         saving_path = f"{self.local_pm_info.log_dir}/col_{self.input}_history_dict.pkl"
         Path(self.local_pm_info.log_dir).mkdir(parents=True, exist_ok=True)
-        with open(saving_path, "wb") as handle:
+        with open(saving_path, "wb") as handle:\n
             pickle.dump(history_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
         print(f"auditing time: {time.time() - begin_time}")
 
@@ -634,8 +639,8 @@ if __name__ == "__main__":
     aggregator.private_attributes = {}
 
     # Setup collaborators with private attributes
-    # collaborator_names = ['2', '17']
-    collaborator_names = [str(n) for n in range(1,24)]
+    collaborator_names = ['2', '17']
+    # collaborator_names = [str(n) for n in range(1,24)]
     collaborators = [Collaborator(name=name) for name in collaborator_names]
     
     if torch.cuda.is_available():

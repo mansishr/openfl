@@ -58,7 +58,7 @@ scheduler:
 # use mse_torch for regression/classification problems and dice for segmentation
 loss_function: dc
 # this parameter weights the loss to handle imbalanced losses better
-weighted_loss: True 
+weighted_loss: False 
 #loss_function:
 #  {
 #    'mse':{

@@ -480,11 +480,41 @@ class FederatedFlow(FLSpec):
         plot_auc_history(history_dict, self.input)
         plot_roc_history(history_dict, self.input)
 
+        # convert history dict to standard python objects so unpickling does not require additional context
+        attributes_for_hist_dict = ['history', 'other_info', 'fpr_tolerance', 'signals']
+        history_dict_converted = {
+            "PM Result (Local)": {attr: getattr(self.local_pm_info, attr) for attr in attributes_for_hist_dict},
+            "PM Result (Global)": {attr: getattr(self.global_pm_info, attr) for attr in attributes_for_hist_dict},
+        }
+        
+        
+        
+        # Some audit output to terminal
+        print("\n########################################################")
+        print("Privacy Meter Report")
+        print("########################################################\n") 
+
+        print("\n########################################################")
+        print("Local ...")
+        print(f"history: {self.local_pm_info.history}")
+        print(f"other info: {self.local_pm_info.other_info}")
+        print(f"fpr_tolerance: {self.local_pm_info.fpr_tolerance}")
+        print(f"signals: {self.local_pm_info.signals}")
+        print("########################################################\n")
+
+        print("\n########################################################")
+        print("Global ...")
+        print(f"history: {self.global_pm_info.history}")
+        print(f"other info: {self.global_pm_info.other_info}")
+        print(f"fpr_tolerance: {self.global_pm_info.fpr_tolerance}")
+        print(f"signals: {self.global_pm_info.signals}")
+        print("########################################################\n")
+
         # save the privacy report
-        saving_path = f"{self.local_pm_info.log_dir}/col_{self.input}_history_dict.pkl"
+        saving_path = f"{self.local_pm_info.log_dir}/col_{self.input}_history_dict_converted.pkl"
         Path(self.local_pm_info.log_dir).mkdir(parents=True, exist_ok=True)
         with open(saving_path, "wb") as handle:
-            pickle.dump(history_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(history_dict_converted, handle, protocol=pickle.HIGHEST_PROTOCOL)
         print(f"auditing time: {time.time() - begin_time}")
 
 
@@ -637,8 +667,8 @@ if __name__ == "__main__":
     aggregator.private_attributes = {}
 
     # Setup collaborators with private attributes
-    # collaborator_names = ['2', '17']
-    collaborator_names = [str(n) for n in range(1,24)]
+    collaborator_names = ['2', '17']
+    # collaborator_names = [str(n) for n in range(1,24)]
     collaborators = [Collaborator(name=name) for name in collaborator_names]
     
     if torch.cuda.is_available():

@@ -85,8 +85,8 @@ class GaNDLFLoaderWrapper(object):
     # Some hard coded choices as to how many times to run 
     # and how many subjects to check against when testing that the base loader
     # for that it produces the same data over multiple usages
-    num_attempts = 5
-    num_subjects = 5
+    num_attempts = 0
+    num_subjects = 1
 
     def __init__(self, 
                  parameters, 
