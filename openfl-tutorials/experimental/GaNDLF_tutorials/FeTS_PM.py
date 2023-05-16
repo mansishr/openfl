@@ -39,7 +39,7 @@ import argparse
 import warnings
 
 # visible_gpus = "0,1,2,3,4,5"
-visible_gpus = "1,2,3,4,5,7,8,9"
+visible_gpus = "1,2,3,7,8,9"
 os.environ["CUDA_VISIBLE_DEVICES"] = visible_gpus
 
 total_visible_gpus = len(visible_gpus.split(','))
@@ -301,7 +301,7 @@ class FederatedFlow(FLSpec):
         # sanity check that model and global model have diverted (rather than training on one reflecting in the other)
         if models_equal(model_1=self.model, model_2 = self.global_model):
             raise ValueError(f"Local update and global model are equal after training in round {self.round_num}, either they share memory or training was a no op!")
-        
+        delattr(self, 'augmented_gandlf_config')
         self.next(self.local_model_validation)
 
     # @collaborator  # Uncomment if you want ro run on CPU
@@ -321,19 +321,18 @@ class FederatedFlow(FLSpec):
                                                 test_loader=self.val_loader, 
                                                 scheduler=self.scheduler, 
                                                 round_num=self.round_num, 
-                                                params=self.augmented_gandlf_config)
+                                                params=self.gandlf_config)
         # Test dataset performance
         self.local_test_score = inference(network=self.model, 
                                                 test_loader=self.test_loader, 
                                                 scheduler=self.scheduler, 
                                                 round_num=self.round_num, 
-                                                params=self.augmented_gandlf_config)
+                                                params=self.gandlf_config)
 
         # remove val and test loader attributes
         delattr(self, 'val_loader')
         delattr(self, 'test_loader')
-        delattr(self, 'augmented_gandlf_config')
-
+        
         print(
             (
                 "Doing local model validation for collaborator: "
@@ -350,7 +349,10 @@ class FederatedFlow(FLSpec):
             or self.round_num % self.local_pm_info.interval == 0
             or self.round_num == self.total_rounds
         ):
-            self.next(self.audit)
+            # Brandon TODO: remove skipping audit below
+            # SKIPPING AUDIT TO TEST
+            # self.next(self.audit)
+            self.next(self.join, exclude=["training_completed"])
         else:
             self.next(self.join, exclude=["training_completed"])
 
@@ -465,7 +467,8 @@ class FederatedFlow(FLSpec):
             target_model, target_dataset, pm_population_dataset, self.global_pm_info
         )
         self.global_pm_info.update_history("round", self.round_num)
-        target_model.model_obj.to("cpu")
+        # trying to manage OOM issues
+        del target_model
         print(f"population attack for the global model uses {time.time() - start_time}")
 
         start_time = time.time()
@@ -667,8 +670,8 @@ if __name__ == "__main__":
     aggregator.private_attributes = {}
 
     # Setup collaborators with private attributes
-    collaborator_names = ['2', '17']
-    # collaborator_names = [str(n) for n in range(1,24)]
+    # collaborator_names = ['2', '17']
+    collaborator_names = [str(n) for n in range(1,24)]
     collaborators = [Collaborator(name=name) for name in collaborator_names]
     
     if torch.cuda.is_available():
